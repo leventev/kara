@@ -1,7 +1,9 @@
-const sbi = @import("arch/riscv/sbi.zig");
+const kio = @import("kio.zig");
+
+export var deviceTreePointer: *void = undefined;
 
 export fn kmain() void {
-    sbi.sbi_debug_console_write("hello world!");
+    kio.log("hello world! {}", .{deviceTreePointer});
 
     while (true) {}
 }

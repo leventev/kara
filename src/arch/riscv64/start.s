@@ -22,6 +22,8 @@ bss_clear:
     addi t5, t5, 8
     bltu t5, t6, bss_clear
 
+    la t0, deviceTreePointer
+    sd a1, (t0)
     tail kmain
 
 loop:

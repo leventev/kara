@@ -19,7 +19,7 @@ pub fn build(b: *std.Build) void {
         .code_model = .medium,
     });
 
-    exe.addAssemblyFile(b.path("src/arch/riscv/start.s"));
+    exe.addAssemblyFile(b.path("src/arch/riscv64/start.s"));
     exe.setLinkerScript(b.path("linker.ld"));
 
     b.installArtifact(exe);
