@@ -13,4 +13,5 @@ fn writeBytes(_: void, bytes: []const u8) error{}!usize {
 
 pub fn log(comptime format: []const u8, args: anytype) void {
     fmt.format(kernelWriter, format, args) catch unreachable;
+    kernelWriter.writeByte('\n') catch unreachable;
 }
