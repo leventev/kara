@@ -1,5 +1,5 @@
 const kio = @import("kio.zig");
-const dtb = @import("dtb.zig");
+const dt = @import("devicetree.zig");
 const std = @import("std");
 
 export var deviceTreePointer: *void = undefined;
@@ -13,7 +13,7 @@ pub fn panic(msg: []const u8, errorReturnTrace: ?*std.builtin.StackTrace, ret_ad
 
 export fn kmain() void {
     kio.log("hello world! {}", .{deviceTreePointer});
-    dtb.readDeviceTreeBlob(deviceTreePointer) catch @panic("Failed to read device tree blob");
+    dt.readDeviceTreeBlob(deviceTreePointer) catch @panic("Failed to read device tree blob");
 
     while (true) {}
 }
