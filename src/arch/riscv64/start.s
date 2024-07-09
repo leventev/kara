@@ -14,7 +14,7 @@ _start:
     csrw satp, zero
 
     la sp, stack_top
-    
+
     la t5, bss_start
     la t6, bss_end
 bss_clear:

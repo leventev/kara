@@ -4,6 +4,9 @@ const std = @import("std");
 
 export var deviceTreePointer: *void = undefined;
 
+const temporaryHeapSize = 65535;
+var temporaryHeap: [temporaryHeapSize]u8 = undefined;
+
 pub fn panic(msg: []const u8, errorReturnTrace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     kio.log("KERNEL PANIC: {s}", .{msg});
     _ = errorReturnTrace;
@@ -12,8 +15,10 @@ pub fn panic(msg: []const u8, errorReturnTrace: ?*std.builtin.StackTrace, ret_ad
 }
 
 export fn kmain() void {
-    kio.log("hello world! {}", .{deviceTreePointer});
-    dt.readDeviceTreeBlob(deviceTreePointer) catch @panic("Failed to read device tree blob");
+    var fba = std.heap.FixedBufferAllocator.init(&temporaryHeap);
+    const allocator = fba.allocator();
+
+    dt.readDeviceTreeBlob(allocator, deviceTreePointer) catch @panic("Failed to read device tree blob");
 
     while (true) {}
 }
