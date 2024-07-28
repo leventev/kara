@@ -7,7 +7,7 @@ const sbi = @import("arch/riscv64/sbi.zig");
 pub const kernelWriter = Writer(void, error{}, writeBytes){ .context = {} };
 
 fn writeBytes(_: void, bytes: []const u8) error{}!usize {
-    sbi.debug_console_write(bytes) catch unreachable;
+    sbi.debugConsoleWrite(bytes) catch unreachable;
     return bytes.len;
 }
 

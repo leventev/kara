@@ -1,7 +1,27 @@
 // documentation: https://github.com/riscv-non-isa/riscv-sbi-doc
 
+pub const SBIBaseExtID = 0x10;
+pub const SBIGetSpecificationVersion = 0;
+pub const SBIGetImplementationID = 1;
+pub const SBIGetImplementationVersion = 2;
+
 pub const SBIDebugConsoleExtID = 0x4442434E;
 pub const SBIDebugConsoleConWrite = 0;
+
+pub const SBIImplementations: []const []const u8 = &.{
+    "Berkeley Boot Loader (BBL)",
+    "OpenSBI",
+    "Xvisor",
+    "KVM",
+    "RustSBI",
+    "Diosix",
+    "Coffer",
+    "Xen Project",
+    "PolarFire Hart Software Services",
+    "coreboot",
+    "oreboot",
+    "bhyve",
+};
 
 const SBIErrorCode = enum(i64) {
     SBI_SUCCESS = 0,
@@ -70,7 +90,22 @@ pub fn call(extension: u64, function: u64, arg0: u64, arg1: u64, arg2: u64) SBIE
     }
 }
 
-pub fn debug_console_write(str: []const u8) SBIError!void {
+pub fn debugConsoleWrite(str: []const u8) SBIError!void {
     const addr_int = @intFromPtr(str.ptr);
     _ = try call(SBIDebugConsoleExtID, SBIDebugConsoleConWrite, str.len, addr_int, 0);
+}
+
+pub fn getSpecificationVersion() u64 {
+    const res = call(SBIBaseExtID, SBIGetSpecificationVersion, 0, 0, 0) catch unreachable;
+    return @intCast(res);
+}
+
+pub fn getImplementationID() u64 {
+    const res = call(SBIBaseExtID, SBIGetImplementationID, 0, 0, 0) catch unreachable;
+    return @intCast(res);
+}
+
+pub fn getImplementationVersion() u64 {
+    const res = call(SBIBaseExtID, SBIGetImplementationVersion, 0, 0, 0) catch unreachable;
+    return @intCast(res);
 }
