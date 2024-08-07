@@ -156,7 +156,8 @@ pub fn printDeviceTree(path: []const u8, node: *const DeviceTreeNode, depth: usi
     }
 }
 
-pub fn readDeviceTreeBlob(allocator: std.mem.Allocator, blobPtr: *void) !DeviceTreeNode {
+pub const DeviceTreeRoot = struct { node: DeviceTreeNode, addr: usize, size: usize };
+pub fn readDeviceTreeBlob(allocator: std.mem.Allocator, blobPtr: *void) !DeviceTreeRoot {
     const blob: [*]u32 = @ptrCast(@alignCast(blobPtr));
     const magic = bigToNative(u32, blob[blobMagicIdx]);
     if (magic != DeviceTreeBlobMagic) {
@@ -177,5 +178,9 @@ pub fn readDeviceTreeBlob(allocator: std.mem.Allocator, blobPtr: *void) !DeviceT
     const ptr = tokenPtr + 1 + ceilDiv(usize, name.len + 1, @sizeOf(u32));
     const rootNodeRead = try readNode(allocator, blob, ptr);
     const rootNode = rootNodeRead.node;
-    return rootNode;
+    return DeviceTreeRoot{
+        .addr = @intFromPtr(blobPtr),
+        .node = rootNode,
+        .size = bigToNative(u32, blob[totalSizeIdx]),
+    };
 }

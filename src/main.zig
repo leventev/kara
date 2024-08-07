@@ -37,7 +37,7 @@ export fn kmain() void {
 
     const dtRoot = dt.readDeviceTreeBlob(allocator, deviceTreePointer) catch @panic("Failed to read device tree blob");
 
-    const machine = dtRoot.getProperty("model") orelse @panic("Invalid device tree");
+    const machine = dtRoot.node.getProperty("model") orelse @panic("Invalid device tree");
     kio.log("Machine model: {s}", .{machine});
 
     phys.init(allocator, &dtRoot) catch @panic("Failed to initalize physical memory allocator");

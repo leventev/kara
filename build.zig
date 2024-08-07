@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
         "-bios",    "opensbi/build/platform/generic/firmware/fw_dynamic.bin",
         "-kernel",  "zig-out/bin/kara",
         "-serial",  "stdio",
-        "-m",       "8M",
+        "-m",       "128M",
     });
     qemu.step.dependOn(b.getInstallStep());
 
