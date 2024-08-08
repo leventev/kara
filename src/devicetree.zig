@@ -85,13 +85,6 @@ fn readProperty(blob: [*]u32, ptr: [*]u32) NodeProperty {
     };
 }
 
-fn ceilDiv(comptime T: type, a: T, b: T) T {
-    var val = a / b;
-    if (a % b != 0)
-        val += 1;
-    return val;
-}
-
 const DeviceTreeNodeRead = struct { node: DeviceTreeNode, ptrForward: usize };
 fn readNode(allocator: std.mem.Allocator, blob: [*]u32, ptr: [*]u32) !DeviceTreeNodeRead {
     var ptrIdx: usize = 0;
@@ -109,7 +102,7 @@ fn readNode(allocator: std.mem.Allocator, blob: [*]u32, ptr: [*]u32) !DeviceTree
         switch (tokenType) {
             .beginNode => {
                 const name = readBeginNode(ptr + ptrIdx);
-                ptrIdx += ceilDiv(usize, name.len + 1, @sizeOf(u32));
+                ptrIdx += std.math.divCeil(usize, name.len + 1, @sizeOf(u32)) catch unreachable;
 
                 const read = try readNode(allocator, blob, ptr + ptrIdx);
                 ptrIdx += read.ptrForward;
@@ -118,7 +111,8 @@ fn readNode(allocator: std.mem.Allocator, blob: [*]u32, ptr: [*]u32) !DeviceTree
             },
             .property => {
                 const prop = readProperty(blob, ptr + ptrIdx);
-                ptrIdx += 2 + ceilDiv(usize, prop.value.len, @sizeOf(u32));
+                const words = std.math.divCeil(usize, prop.value.len, @sizeOf(u32)) catch unreachable;
+                ptrIdx += 2 + words;
 
                 try properties.put(allocator, prop.name, prop.value);
             },
@@ -175,7 +169,8 @@ pub fn readDeviceTreeBlob(allocator: std.mem.Allocator, blobPtr: *void) !DeviceT
     // name should be empty but we don't need to check
     const name = readBeginNode(tokenPtr + 1);
 
-    const ptr = tokenPtr + 1 + ceilDiv(usize, name.len + 1, @sizeOf(u32));
+    const words = std.math.divCeil(usize, name.len + 1, @sizeOf(u32)) catch unreachable;
+    const ptr = tokenPtr + 1 + words;
     const rootNodeRead = try readNode(allocator, blob, ptr);
     const rootNode = rootNodeRead.node;
     return DeviceTreeRoot{

@@ -1,6 +1,7 @@
 const std = @import("std");
 const kio = @import("kio.zig");
 const dt = @import("devicetree.zig");
+const mm = @import("mem/mm.zig");
 const phys = @import("mem/phys.zig");
 const sbi = @import("arch/riscv64/sbi.zig");
 
@@ -35,12 +36,19 @@ export fn kmain() void {
     var fba = std.heap.FixedBufferAllocator.init(&temporaryHeap);
     const allocator = fba.allocator();
 
-    const dtRoot = dt.readDeviceTreeBlob(allocator, deviceTreePointer) catch @panic("Failed to read device tree blob");
+    const dtRoot = dt.readDeviceTreeBlob(allocator, deviceTreePointer) catch
+        @panic("Failed to read device tree blob");
 
     const machine = dtRoot.node.getProperty("model") orelse @panic("Invalid device tree");
     kio.log("Machine model: {s}", .{machine});
 
-    phys.init(allocator, &dtRoot) catch @panic("Failed to initalize physical memory allocator");
+    const frameRegions = mm.getFrameRegions(allocator, &dtRoot) catch
+        @panic("Failed to initalize physical memory allocator");
+
+    phys.init(allocator, frameRegions) catch
+        @panic("Failed to initialize physical frame allocator");
+
+    allocator.free(frameRegions);
 
     while (true) {}
 }
