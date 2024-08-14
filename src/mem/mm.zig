@@ -1,6 +1,7 @@
+const std = @import("std");
 const kio = @import("../kio.zig");
 const dt = @import("../devicetree.zig");
-const std = @import("std");
+const arch = @import("../arch/arch.zig");
 
 const bigToNative = std.mem.bigToNative;
 
@@ -23,65 +24,10 @@ extern const __stack_end: u8;
 pub const PageSize = 4096;
 pub const FrameSize = PageSize;
 
-pub const SATPMode = enum(u4) {
-    Bare = 0,
-    Sv39 = 8,
-    Sv48 = 9,
-    Sv57 = 10,
-    Sv64 = 11,
-};
+pub const EntriesPerPageTable = 512;
 
-// TODO: other arches
-pub const SATP = packed struct(u64) {
-    physicalPageNumber: u44,
-    addresssSpaceID: u16,
-    mode: SATPMode,
-};
-
-// TODO: other arches
-pub const PhysicalAddress = packed struct(u64) {
-    offset: u12,
-    pageNumber0: u9,
-    pageNumber1: u9,
-    pageNumber2: u9,
-    __unused: u25,
-
-    const Self = @This();
-
-    pub fn make(addr: u64) PhysicalAddress {
-        return @bitCast(addr);
-    }
-
-    pub fn asInt(self: Self) u64 {
-        return @bitCast(self);
-    }
-
-    pub fn isPageAligned(self: Self) bool {
-        return self.offset == 0;
-    }
-};
-
-pub const VirtualAddress = struct {
-    offset: u12,
-    pageNumber0: u9,
-    pageNumber1: u9,
-    pageNumber2: u9,
-    __unused: u25,
-
-    const Self = @This();
-
-    pub fn make(addr: u64) VirtualAddress {
-        return @bitCast(addr);
-    }
-
-    pub fn asInt(self: Self) u64 {
-        return @bitCast(self);
-    }
-
-    pub fn isPageAligned(self: Self) bool {
-        return self.offset == 0;
-    }
-};
+pub const VirtualAddress = arch.VirtualAddress;
+pub const PhysicalAddress = arch.PhysicalAddress;
 
 // TODO: move all device tree specific code to devicetree.zig
 pub const MemoryRegion = struct {
@@ -348,7 +294,7 @@ fn addDeviceTreeReservedMemory(
 }
 
 fn printPhysicalRegions(physicalRegions: []const PhysicalMemoryRegion) void {
-    kio.log("physical memory regions:", .{});
+    kio.log("Physical memory regions:", .{});
     for (physicalRegions) |reg| {
         const range = reg.range;
         const sizeInKiB = range.size / 1024;
@@ -360,7 +306,7 @@ fn printPhysicalRegions(physicalRegions: []const PhysicalMemoryRegion) void {
 }
 
 fn printReservedRegions(reservedRegions: []const ReservedMemoryRegion) void {
-    kio.log("reserved memory regions:", .{});
+    kio.log("Reserved memory regions:", .{});
     for (reservedRegions) |reg| {
         const range = reg.range;
         const sizeInKiB = range.size / 1024;
@@ -387,7 +333,7 @@ fn printReservedRegions(reservedRegions: []const ReservedMemoryRegion) void {
 }
 
 fn printUsableRegions(regions: []const MemoryRegion) void {
-    kio.log("usable memory regions:", .{});
+    kio.log("Usable memory regions:", .{});
     for (regions) |reg| {
         const sizeInKiB = reg.size / 1024;
         kio.log(
@@ -407,14 +353,15 @@ pub fn getFrameRegions(allocator: std.mem.Allocator, dtRoot: *const dt.DeviceTre
     try addDeviceTreeReservedMemory(allocator, &reservedRegions, dtRoot);
     try addKernelReservedMemory(allocator, &reservedRegions);
 
+    printPhysicalRegions(physicalRegions.items);
+    printReservedRegions(reservedRegions.items);
+
     var usableRegions = try getUsableRegions(
         allocator,
         physicalRegions.items,
         reservedRegions.items,
     );
 
-    printPhysicalRegions(physicalRegions.items);
-    printReservedRegions(reservedRegions.items);
     printUsableRegions(usableRegions.items);
 
     return usableRegions.toOwnedSlice();

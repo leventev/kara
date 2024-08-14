@@ -3,7 +3,7 @@ const kio = @import("kio.zig");
 const dt = @import("devicetree.zig");
 const mm = @import("mem/mm.zig");
 const phys = @import("mem/phys.zig");
-const sbi = @import("arch/riscv64/sbi.zig");
+const arch = @import("arch/arch.zig");
 
 export var deviceTreePointer: *void = undefined;
 
@@ -11,31 +11,31 @@ const temporaryHeapSize = 65535;
 var temporaryHeap: [temporaryHeapSize]u8 = undefined;
 
 pub fn panic(msg: []const u8, errorReturnTrace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
-    kio.log("KERNEL PANIC: {s}", .{msg});
-    _ = errorReturnTrace;
     _ = ret_addr;
+    _ = errorReturnTrace;
+
+    kio.log("KERNEL PANIC: {s}", .{msg});
+    kio.log("Stack trace:", .{});
+    const firstTraceAddr = @returnAddress();
+    var it = std.debug.StackIterator.init(firstTraceAddr, null);
+    while (it.next()) |addr| {
+        kio.log("    0x{x}", .{addr});
+    }
     while (true) {}
 }
 
-export fn kmain() void {
-    kio.log("Starting kara...", .{});
+export fn kmain() linksection(".init") void {
+    // at this point virtual memory is still disabled
+    arch.init();
+    // virtual memory has been enabled
+    init();
+}
 
-    const sbiVersion = sbi.getSpecificationVersion();
-    const sbiVersionMajor = sbiVersion >> 24;
-    const sbiVersionMinor = sbiVersion & 0x00FFFFFF;
-    const sbiImplementationID = sbi.getImplementationID();
-    const sbiImplementation: []const u8 = if (sbiImplementationID < sbi.SBIImplementations.len)
-        sbi.SBIImplementations[sbiImplementationID]
-    else
-        "Unknown";
-    const sbiImplementationVersion = sbi.getImplementationVersion();
-
-    kio.log("SBI specification version: {}.{}", .{ sbiVersionMajor, sbiVersionMinor });
-    kio.log("SBI implementation: {s} (ID={x}) version: 0x{x}", .{ sbiImplementation, sbiImplementationID, sbiImplementationVersion });
-
+fn init() void {
     var fba = std.heap.FixedBufferAllocator.init(&temporaryHeap);
     const allocator = fba.allocator();
 
+    kio.log("Device tree address: 0x{x}", .{@intFromPtr(deviceTreePointer)});
     const dtRoot = dt.readDeviceTreeBlob(allocator, deviceTreePointer) catch
         @panic("Failed to read device tree blob");
 

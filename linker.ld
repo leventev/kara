@@ -1,11 +1,12 @@
 ENTRY(start);
- 
-. = 0x80200000;
 
-__stack_size = 0x10000;
+KERNEL_ADDRESS = 0x80200000;
+STACK_SIZE = 0x10000;
 
 SECTIONS {
+	. = KERNEL_ADDRESS;
 	PROVIDE(__kernel_start = .);
+
 	.text : ALIGN(4K) {
 		PROVIDE(__text_start = .);
 		*(.init);
@@ -35,7 +36,7 @@ SECTIONS {
 	}
 	.stack(NOLOAD) : ALIGN(4K) {
 		PROVIDE(__stack_start = .);
-		. += __stack_size;
+		. += STACK_SIZE;
 		PROVIDE(__stack_top = .);
 		PROVIDE(__stack_end = .);
 	}
