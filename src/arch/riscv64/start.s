@@ -2,7 +2,7 @@
 
 .option norvc
 
-.type start, @function
+.type _start, @function
 .global _start
 _start:
     .cfi_startproc
@@ -12,6 +12,8 @@ _start:
     la gp, __global_pointer
 .option pop
     csrw satp, zero
+
+    csrw sie, zero
 
     la sp, __stack_top
 

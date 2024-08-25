@@ -1,9 +1,14 @@
 const sbi = @import("sbi.zig");
 const mm = @import("mm.zig");
 const kio = @import("../../kio.zig");
+const trap = @import("trap.zig");
 
 pub const VirtualAddress = mm.Sv39VirtualAddress;
 pub const PhysicalAddress = mm.Sv39PhysicalAddress;
+
+pub const enableInterrupts = trap.enableInterrupts;
+pub const disableInterrupts = trap.disableInterrupts;
+pub const initInterrupts = trap.init;
 
 pub fn init() linksection(".init") void {
     kio.log("Starting kara(riscv64)...", .{});

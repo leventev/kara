@@ -4,7 +4,8 @@ const Reader = @import("std").io.GenericReader;
 
 const sbi = @import("arch/riscv64/sbi.zig");
 
-pub const kernelWriter = Writer(void, error{}, writeBytes){ .context = {} };
+pub const KernelWriterType = Writer(void, error{}, writeBytes);
+pub const kernelWriter = KernelWriterType{ .context = {} };
 
 fn writeBytes(_: void, bytes: []const u8) error{}!usize {
     sbi.debugConsoleWrite(bytes) catch unreachable;
