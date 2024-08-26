@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.addAssemblyFile(b.path("src/arch/riscv64/start.s"));
+    exe.addAssemblyFile(b.path("src/arch/riscv64/trap.s"));
     exe.setLinkerScript(b.path("linker.ld"));
 
     b.installArtifact(exe);

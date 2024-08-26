@@ -8,6 +8,9 @@ pub const SBIGetImplementationVersion = 2;
 pub const SBIDebugConsoleExtID = 0x4442434E;
 pub const SBIDebugConsoleConWrite = 0;
 
+pub const SBITimerExtID = 0x54494D45;
+pub const SBITimerSetTimer = 0;
+
 pub const SBIImplementations: []const []const u8 = &.{
     "Berkeley Boot Loader (BBL)",
     "OpenSBI",
@@ -108,4 +111,8 @@ pub fn getImplementationID() u64 {
 pub fn getImplementationVersion() u64 {
     const res = call(SBIBaseExtID, SBIGetImplementationVersion, 0, 0, 0) catch unreachable;
     return @intCast(res);
+}
+
+pub fn setTimer(stime: u64) void {
+    _ = call(SBITimerExtID, SBITimerSetTimer, stime, 0, 0) catch unreachable;
 }

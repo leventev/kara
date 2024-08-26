@@ -29,3 +29,8 @@ pub const VirtualAddress = switch (target) {
 pub const PhysicalAddress = switch (target) {
     Arch.riscv64 => riscv64.PhysicalAddress,
 };
+
+// TODO: better way to abstract interrupts
+pub const clockSource = switch (target) {
+    Arch.riscv64 => riscv64.clockSource,
+};

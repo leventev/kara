@@ -1,6 +1,8 @@
 const std = @import("std");
 const kio = @import("../../kio.zig");
 const csr = @import("csr.zig").CSR;
+const sbi = @import("sbi.zig");
+const timer = @import("timer.zig");
 
 extern fn trapHandlerSupervisor() void;
 
@@ -112,7 +114,7 @@ const ExceptionCode = enum(u63) {
     HardwareError = 19,
 };
 
-const InterruptCode = enum(u63) {
+pub const InterruptCode = enum(u63) {
     SupervisorSoftwareInterrupt = 1,
     MachineSoftwareInterrupt = 3,
     SupervisorTimerInterrupt = 5,
@@ -253,14 +255,19 @@ pub fn disableInterrupts() void {
     csr.sstatus.clearBits(1 << @bitOffsetOf(SStatus, "supervisorInterruptEnable"));
 }
 
-pub fn init() void {
-    const stvec = TrapVectorBaseAddr.make(
-        @intFromPtr(&trapHandlerSupervisor),
-        TrapVectorBaseAddr.Mode.Direct,
-    );
+pub fn enableInterrupt(id: usize) void {
+    std.debug.assert(id < 64);
+    csr.sie.setBits(std.math.shl(u64, 1, id));
+}
 
-    csr.stvec.write(@bitCast(stvec));
-    csr.sscratch.write(@intFromPtr(&trapFrame));
+pub fn disableInterrupt(id: usize) void {
+    std.debug.assert(id < 64);
+    csr.sie.clearBits(std.math.shl(u64, 1, id));
+}
+
+pub fn clearPendingInterrupt(id: usize) void {
+    std.debug.assert(id < 64);
+    csr.sip.clearBits(std.math.shl(u64, 1, id));
 }
 
 fn genericExceptionHandler(code: ExceptionCode, pc: u64, status: SStatus, tval: u64, frame: *TrapData) void {
@@ -317,10 +324,7 @@ fn handleInterrupt(code: InterruptCode, pc: u64, status: SStatus, tval: u64, fra
             @panic("Machine software interrupt");
         },
         .SupervisorTimerInterrupt => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
-            @panic("Supervisor timer interrupt");
+            timer.tick();
         },
         .MachineTimerInterrupt => {
             status.print(kio.kernelWriter);
@@ -361,6 +365,14 @@ export fn handleTrap(
     } else {
         handleException(cause.exception(), epc, status, tval, frame);
     }
+}
 
-    while (true) {}
+pub fn init() void {
+    const stvec = TrapVectorBaseAddr.make(
+        @intFromPtr(&trapHandlerSupervisor),
+        TrapVectorBaseAddr.Mode.Direct,
+    );
+
+    csr.stvec.write(@bitCast(stvec));
+    csr.sscratch.write(@intFromPtr(&trapFrame));
 }

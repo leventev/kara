@@ -1,10 +1,11 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const kio = @import("kio.zig");
 const dt = @import("devicetree.zig");
 const mm = @import("mem/mm.zig");
 const phys = @import("mem/phys.zig");
 const arch = @import("arch/arch.zig");
-const builtin = @import("builtin");
+const time = @import("time.zig");
 
 export var deviceTreePointer: *void = undefined;
 
@@ -52,8 +53,15 @@ fn init() void {
 
     arch.initInterrupts();
 
-    const addr: *u8 = @ptrFromInt(0xB00B5);
-    addr.* = 1;
+    time.init(&dtRoot) catch @panic("Failed to initialize timer");
 
-    while (true) {}
+    arch.enableInterrupts();
+
+    for (0..100_000) |i| {
+        kio.log("test {}", .{i});
+    }
+
+    while (true) {
+        asm volatile ("wfi");
+    }
 }
