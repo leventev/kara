@@ -3,10 +3,10 @@ const dt = @import("devicetree.zig");
 const kio = @import("kio.zig");
 const arch = @import("arch/arch.zig");
 
-pub const NanosecondsPerMicroseconds = 1_000;
-pub const NanosecondsPerMilliseconds = 1_000_000;
-pub const NanosecondsPerSecond = 1_000_000_000;
-pub const NanosecondsPerTick = 1_000_000;
+pub const ns_per_microseconds = 1_000;
+pub const ns_per_milliseconds = 1_000_000;
+pub const ns_per_second = 1_000_000_000;
+pub const ns_per_tick = 1_000_000;
 
 pub const ClockSourceInitError = error{InvalidDeviceTree};
 
@@ -20,21 +20,21 @@ pub const ClockSource = struct {
 // TODO: locking
 const Timer = struct {
     initialized: bool,
-    nsPerIncrement: u64,
-    startCount: u64,
+    ns_per_increment: u64,
+    start_count: u64,
 
     const Self = @This();
 
     fn init(self: *Self, dtRoot: *const dt.DeviceTreeRoot) !void {
-        const frequency = try arch.clockSource.init(dtRoot);
-        self.nsPerIncrement = NanosecondsPerSecond / frequency;
+        const frequency = try arch.clock_source.init(dtRoot);
+        self.ns_per_increment = ns_per_second / frequency;
 
-        self.startCount = arch.clockSource.readCounter();
+        self.start_count = arch.clock_source.readCounter();
         self.initialized = true;
 
         kio.info("Timer initialized frequency={}Hz, increments every {}ns", .{
             frequency,
-            self.nsPerIncrement,
+            self.ns_per_increment,
         });
     }
 };
@@ -43,12 +43,12 @@ var timer: Timer = undefined;
 
 pub fn enable() void {
     std.debug.assert(timer.initialized);
-    arch.clockSource.enable();
+    arch.clock_source.enable();
 }
 
 pub fn disable() void {
     std.debug.assert(timer.initialized);
-    arch.clockSource.disable();
+    arch.clock_source.disable();
 }
 
 pub fn tick() void {
@@ -58,8 +58,8 @@ pub fn tick() void {
 
 pub fn nanoseconds() ?u64 {
     if (!timer.initialized) return null;
-    const current = arch.clockSource.readCounter();
-    return (current - timer.startCount) * timer.nsPerIncrement;
+    const current = arch.clock_source.readCounter();
+    return (current - timer.start_count) * timer.ns_per_increment;
 }
 
 pub fn init(dtRoot: *const dt.DeviceTreeRoot) !void {

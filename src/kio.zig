@@ -11,10 +11,11 @@ const kio_cfg: std.io.tty.Config = .escape_codes;
 
 fn printTimeAndLogLevel(level: LogLevel) !void {
     const ns = time.nanoseconds() orelse 0;
-    const sec = ns / time.NanosecondsPerSecond;
-    const rem = ns % (10 * time.NanosecondsPerMicroseconds);
+    const sec = ns / time.ns_per_second;
+    const rem = ns % time.ns_per_second;
+    const qs = rem / (10 * time.ns_per_microseconds);
 
-    try std.fmt.format(kernel_writer, "{}.{:0>5} ", .{ sec, rem });
+    try std.fmt.format(kernel_writer, "{}.{:0>5} ", .{ sec, qs });
 
     try kio_cfg.setColor(kernel_writer, std.io.tty.Color.bold);
     try kio_cfg.setColor(kernel_writer, level.color());

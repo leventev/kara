@@ -3,20 +3,20 @@ const std = @import("std");
 const kio = @import("../kio.zig");
 
 const LineType = u64;
-const FramesPerLine = @bitSizeOf(LineType);
-const BitmapLineFull = std.math.maxInt(LineType);
+const frames_per_line = @bitSizeOf(LineType);
+const bitmap_line_full = std.math.maxInt(LineType);
 
 const PageFrameRegion = struct {
     address: mm.PhysicalAddress,
-    totalFrameCount: usize,
-    freeFrameCount: usize,
+    total_frame_count: usize,
+    free_frame_count: usize,
     bitmap: []LineType,
-    firstFreeLineIdx: usize,
+    first_free_line_idx: usize,
 
     const Self = @This();
 
     fn full(self: Self) bool {
-        return self.freeFrameCount == 0;
+        return self.free_frame_count == 0;
     }
 
     fn alloc(self: *Self) mm.PhysicalAddress {
@@ -25,22 +25,22 @@ const PageFrameRegion = struct {
 
         // NOTE: we could store the frame index instead of just the bitmap index
         // but that would introduce an extra if statement and i believe it's prettier this way :)
-        for (self.firstFreeLineIdx..self.bitmap.len) |lineIdx| {
+        for (self.first_free_line_idx..self.bitmap.len) |lineIdx| {
             const line = self.bitmap[lineIdx];
-            if (line == BitmapLineFull)
+            if (line == bitmap_line_full)
                 continue;
 
-            for (0..FramesPerLine) |bitIdx| {
+            for (0..frames_per_line) |bitIdx| {
                 const bit: LineType = std.math.shl(LineType, 1, bitIdx);
                 const allocated = line & bit > 0;
                 if (allocated)
                     continue;
 
-                self.firstFreeLineIdx = lineIdx;
+                self.first_free_line_idx = lineIdx;
                 self.bitmap[lineIdx] |= bit;
-                self.freeFrameCount -= 1;
+                self.free_frame_count -= 1;
 
-                const address = self.address.asInt() + (lineIdx * FramesPerLine + bitIdx) * mm.FrameSize;
+                const address = self.address.asInt() + (lineIdx * frames_per_line + bitIdx) * mm.frame_size;
                 return mm.PhysicalAddress.make(address);
             }
         }
@@ -50,32 +50,32 @@ const PageFrameRegion = struct {
 
     fn free(self: *Self, addr: mm.PhysicalAddress) void {
         const address = addr.asInt() - self.address.asInt();
-        const lineIdx = address / FramesPerLine;
-        const bitIdx = address % FramesPerLine;
+        const line_idx = address / frames_per_line;
+        const bit_idx = address % frames_per_line;
 
-        const bit = std.math.shl(LineType, 1, bitIdx);
+        const bit = std.math.shl(LineType, 1, bit_idx);
 
-        self.bitmap[lineIdx] &= ~bit;
-        self.freeFrameCount += 1;
+        self.bitmap[line_idx] &= ~bit;
+        self.free_frame_count += 1;
     }
 
     fn contains(self: Self, addr: mm.PhysicalAddress) bool {
         const address = addr.asInt();
-        const thisAddress = self.address.asInt();
+        const this_address = self.address.asInt();
 
-        if (address < thisAddress) return false;
-        const relativeAddr = address - thisAddress;
-        const frameIndex = relativeAddr / mm.FrameSize;
+        if (address < this_address) return false;
+        const relative_addr = address - this_address;
+        const frame_index = relative_addr / mm.frame_size;
 
-        return frameIndex < self.totalFrameCount;
+        return frame_index < self.total_frame_count;
     }
 };
 
 // TODO: thread safety
 const PhysicalFrameAllocator = struct {
     regions: []PageFrameRegion,
-    totalFrameCount: usize,
-    freeFrameCount: usize,
+    total_frame_count: usize,
+    free_frame_count: usize,
 
     const Self = @This();
 
@@ -88,7 +88,7 @@ const PhysicalFrameAllocator = struct {
                 continue;
 
             const addr = region.alloc();
-            self.freeFrameCount -= 1;
+            self.free_frame_count -= 1;
             return addr;
         }
 
@@ -104,7 +104,7 @@ const PhysicalFrameAllocator = struct {
                 continue;
 
             region.free(addr);
-            self.freeFrameCount += 1;
+            self.free_frame_count += 1;
             return;
         }
 
@@ -112,57 +112,57 @@ const PhysicalFrameAllocator = struct {
     }
 
     fn full(self: Self) bool {
-        return self.freeFrameCount == 0;
+        return self.free_frame_count == 0;
     }
 };
 
-var FrameAllocator: PhysicalFrameAllocator = undefined;
+var frame_allocator: PhysicalFrameAllocator = undefined;
 
 pub fn init(allocator: std.mem.Allocator, regions: []const mm.MemoryRegion) !void {
     // TODO: do some kind of magic so we don't depend on the temporary allocator
 
     var regs = try allocator.alloc(PageFrameRegion, regions.len);
 
-    var totalFrames: usize = 0;
-    var totalLines: usize = 0;
+    var total_frames: usize = 0;
+    var total_lines: usize = 0;
 
     for (regions, 0..) |physReg, i| {
         const address = mm.PhysicalAddress.make(physReg.start);
-        const frameCount: usize = physReg.size / mm.FrameSize;
-        const linesRequired = std.math.divCeil(usize, frameCount, FramesPerLine) catch unreachable;
+        const frame_count: usize = physReg.size / mm.frame_size;
+        const lines_required = std.math.divCeil(usize, frame_count, frames_per_line) catch unreachable;
 
-        const bitmap = try allocator.alloc(LineType, linesRequired);
+        const bitmap = try allocator.alloc(LineType, lines_required);
         @memset(bitmap, 0);
 
-        totalFrames += frameCount;
-        totalLines += linesRequired;
+        total_frames += frame_count;
+        total_lines += lines_required;
 
         regs[i] = PageFrameRegion{
             .address = address,
-            .totalFrameCount = frameCount,
-            .freeFrameCount = frameCount,
+            .total_frame_count = frame_count,
+            .free_frame_count = frame_count,
             .bitmap = bitmap,
-            .firstFreeLineIdx = 0,
+            .first_free_line_idx = 0,
         };
     }
 
-    FrameAllocator = PhysicalFrameAllocator{
+    frame_allocator = PhysicalFrameAllocator{
         .regions = regs,
-        .totalFrameCount = totalFrames,
-        .freeFrameCount = totalFrames,
+        .total_frame_count = total_frames,
+        .free_frame_count = total_frames,
     };
 
     kio.info("Physical frame allocator initialized with {} frames ({} KiB) available", .{
-        totalFrames,
-        totalFrames * 4,
+        total_frames,
+        total_frames * 4,
     });
-    kio.info("{} bytes allocated for bitmaps", .{@sizeOf(LineType) * totalLines});
+    kio.info("{} bytes allocated for bitmaps", .{@sizeOf(LineType) * total_lines});
 }
 
 pub fn alloc() !mm.PhysicalAddress {
-    return FrameAllocator.alloc();
+    return frame_allocator.alloc();
 }
 
 pub fn free(addr: mm.PhysicalAddress) void {
-    FrameAllocator.free(addr);
+    frame_allocator.free(addr);
 }

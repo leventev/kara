@@ -21,10 +21,10 @@ extern const __bss_end: u8;
 extern const __stack_start: u8;
 extern const __stack_end: u8;
 
-pub const PageSize = 4096;
-pub const FrameSize = PageSize;
+pub const page_size = 4096;
+pub const frame_size = page_size;
 
-pub const EntriesPerPageTable = 512;
+pub const entries_per_table = 512;
 
 pub const VirtualAddress = arch.VirtualAddress;
 pub const PhysicalAddress = arch.PhysicalAddress;
@@ -52,28 +52,28 @@ pub const PhysicalMemoryRegion = struct {
 const ReservedMemoryRegion = struct {
     range: MemoryRegion,
     name: []const u8,
-    noMap: bool,
+    no_map: bool,
     reusable: bool,
     system: bool,
     // TODO: support dynamic reservations too
 };
 
 fn calculateEntrySize(node: *const dt.DeviceTreeNode) !usize {
-    const addressCells = node.getPropertyU32("#address-cells") orelse return error.InvalidDeviceTree;
-    const sizeCells = node.getPropertyU32("#size-cells") orelse return error.InvalidDeviceTree;
+    const address_cells = node.getPropertyU32("#address-cells") orelse return error.InvalidDeviceTree;
+    const size_cells = node.getPropertyU32("#size-cells") orelse return error.InvalidDeviceTree;
 
-    const expectedCells = @sizeOf(u64) / @sizeOf(u32);
-    if (addressCells != expectedCells or sizeCells != expectedCells) {
+    const expected_cells = @sizeOf(u64) / @sizeOf(u32);
+    if (address_cells != expected_cells or size_cells != expected_cells) {
         return error.UnexpectedCellCount;
     }
 
-    const cellsPerEntry = addressCells + sizeCells;
-    return cellsPerEntry * @sizeOf(u32);
+    const cells_per_entry = address_cells + size_cells;
+    return cells_per_entry * @sizeOf(u32);
 }
 
 fn readMemoryPair(buff: []const u8, idx: usize, entrySize: usize) MemoryRegion {
-    const entryBase = idx * entrySize;
-    const entry = buff[entryBase .. entryBase + entrySize];
+    const entry_base = idx * entrySize;
+    const entry = buff[entry_base .. entry_base + entrySize];
 
     const addr = std.mem.readInt(u64, entry[0..8], .big);
     const size = std.mem.readInt(u64, entry[8..16], .big);
@@ -83,28 +83,28 @@ fn readMemoryPair(buff: []const u8, idx: usize, entrySize: usize) MemoryRegion {
 
 fn parseMemoryRegions(
     allocator: std.mem.Allocator,
-    dtRoot: *const dt.DeviceTreeNode,
+    dt_root: *const dt.DeviceTreeNode,
 ) !std.ArrayListUnmanaged(PhysicalMemoryRegion) {
-    const entrySize = try calculateEntrySize(dtRoot);
+    const entry_size = try calculateEntrySize(dt_root);
 
     var regions = std.ArrayListUnmanaged(PhysicalMemoryRegion){};
 
-    var iter = dtRoot.children.iterator();
+    var iter = dt_root.children.iterator();
     while (iter.next()) |child| {
         if (!std.mem.startsWith(u8, child.key_ptr.*, "memory"))
             continue;
 
-        var deviceType = child.value_ptr.getProperty("device_type") orelse return error.InvalidDeviceTree;
+        var device_type = child.value_ptr.getProperty("device_type") orelse return error.InvalidDeviceTree;
 
         // cut off null terminator
-        deviceType = deviceType[0 .. deviceType.len - 1];
-        if (!std.mem.eql(u8, deviceType, "memory")) return error.InvalidDeviceTree;
+        device_type = device_type[0 .. device_type.len - 1];
+        if (!std.mem.eql(u8, device_type, "memory")) return error.InvalidDeviceTree;
 
         const reg = child.value_ptr.getProperty("reg") orelse return error.InvalidDeviceTree;
-        const entryCount = reg.len / entrySize;
+        const entry_count = reg.len / entry_size;
 
-        for (0..entryCount) |i| {
-            const entry = readMemoryPair(reg, i, entrySize);
+        for (0..entry_count) |i| {
+            const entry = readMemoryPair(reg, i, entry_size);
             try regions.append(allocator, PhysicalMemoryRegion{ .range = entry });
         }
     }
@@ -114,31 +114,31 @@ fn parseMemoryRegions(
 
 fn parseReservedMemoryRegions(
     allocator: std.mem.Allocator,
-    dtRoot: *const dt.DeviceTreeNode,
+    dt_root: *const dt.DeviceTreeNode,
 ) !std.ArrayListUnmanaged(ReservedMemoryRegion) {
-    const reservedMemory = dtRoot.getChild("reserved-memory") orelse return error.InvalidDeviceTree;
+    const reserved_memory = dt_root.getChild("reserved-memory") orelse return error.InvalidDeviceTree;
 
-    const entrySize = try calculateEntrySize(reservedMemory);
+    const entry_size = try calculateEntrySize(reserved_memory);
 
     var regions = std.ArrayListUnmanaged(ReservedMemoryRegion){};
 
-    var iter = reservedMemory.children.iterator();
+    var iter = reserved_memory.children.iterator();
     while (iter.next()) |region| {
         const node = region.value_ptr;
 
-        const noMap = node.getProperty("no-map") != null;
+        const no_map = node.getProperty("no-map") != null;
         const reusable = node.getProperty("reusable") != null;
 
         const reg = region.value_ptr.getProperty("reg") orelse continue;
-        const entryCount = reg.len / entrySize;
+        const entry_count = reg.len / entry_size;
 
-        for (0..entryCount) |i| {
-            const entry = readMemoryPair(reg, i, entrySize);
+        for (0..entry_count) |i| {
+            const entry = readMemoryPair(reg, i, entry_size);
 
             try regions.append(allocator, ReservedMemoryRegion{
                 .range = entry,
                 .name = region.key_ptr.*,
-                .noMap = noMap,
+                .no_map = no_map,
                 .reusable = reusable,
                 .system = false,
             });
@@ -148,74 +148,74 @@ fn parseReservedMemoryRegions(
     return regions;
 }
 
-const MinimumRegionSize = 8 * 4096;
+const minimum_region_size = 8 * 4096;
 
 fn processRegion(
     regs: *std.ArrayList(MemoryRegion),
     region: PhysicalMemoryRegion,
-    reservedRegions: []const ReservedMemoryRegion,
+    reserved_regions: []const ReservedMemoryRegion,
 ) !void {
-    std.debug.assert(region.range.start % PageSize == 0);
-    std.debug.assert(region.range.size % PageSize == 0);
+    std.debug.assert(region.range.start % page_size == 0);
+    std.debug.assert(region.range.size % page_size == 0);
 
     var range = region.range;
 
-    for (reservedRegions) |resv| {
-        std.debug.assert(resv.range.start % PageSize == 0);
-        std.debug.assert(resv.range.size % PageSize == 0);
+    for (reserved_regions) |resv| {
+        std.debug.assert(resv.range.start % page_size == 0);
+        std.debug.assert(resv.range.size % page_size == 0);
 
         if (!range.intersects(resv.range))
             continue;
 
-        const resvRange = resv.range;
+        const resv_range = resv.range;
 
         const end = range.end();
-        const resvEnd = resvRange.end();
+        const resv_end = resv_range.end();
 
         // the reserved region starts before or at the same address as the physical region
-        if (resvRange.start <= region.range.start) {
+        if (resv_range.start <= region.range.start) {
             // cut off the interescting part at the beginning of the region
-            range.start = resvEnd;
+            range.start = resv_end;
             range.size = end - range.start;
 
             continue;
         }
 
         // the reserved region ends after or at the same address as the physical region
-        if (resvEnd >= end) {
+        if (resv_end >= end) {
             // cut off the interescting part at the end of the region
-            range.size = resvRange.start - range.start;
+            range.size = resv_range.start - range.start;
 
             continue;
         }
 
         // the reserved region is inside the physical region
-        range.size = resvRange.start - range.start;
+        range.size = resv_range.start - range.start;
 
         // do the same process for the region on the right side of the reserved region
-        const otherRegion = PhysicalMemoryRegion{
+        const other_region = PhysicalMemoryRegion{
             .range = MemoryRegion{
-                .start = resvEnd,
-                .size = end - resvEnd,
+                .start = resv_end,
+                .size = end - resv_end,
             },
         };
 
-        try processRegion(regs, otherRegion, reservedRegions);
+        try processRegion(regs, other_region, reserved_regions);
     }
 
-    if (range.size >= MinimumRegionSize)
+    if (range.size >= minimum_region_size)
         try regs.append(range);
 }
 
 fn getUsableRegions(
     allocator: std.mem.Allocator,
-    physicalRegions: []const PhysicalMemoryRegion,
-    reservedRegions: []const ReservedMemoryRegion,
+    physical_regions: []const PhysicalMemoryRegion,
+    reserved_regions: []const ReservedMemoryRegion,
 ) !std.ArrayList(MemoryRegion) {
     var regions = std.ArrayList(MemoryRegion).init(allocator);
 
-    for (physicalRegions) |phys| {
-        try processRegion(&regions, phys, reservedRegions);
+    for (physical_regions) |phys| {
+        try processRegion(&regions, phys, reserved_regions);
     }
 
     return regions;
@@ -223,79 +223,80 @@ fn getUsableRegions(
 
 fn addKernelReservedMemory(
     allocator: std.mem.Allocator,
-    reservedRegions: *std.ArrayListUnmanaged(ReservedMemoryRegion),
+    reserved_regins: *std.ArrayListUnmanaged(ReservedMemoryRegion),
 ) !void {
+
     // we can(have to) align forward the end address of the segments because the next segment should be at the next possible 4K aligned address
-    const textStart = @intFromPtr(&__text_start);
-    const textEnd = @intFromPtr(&__text_end);
-    const textSize = textEnd - textStart;
+    const text_start = @intFromPtr(&__text_start);
+    const text_end = @intFromPtr(&__text_end);
+    const text_size = text_end - text_start;
 
-    const dataStart = @intFromPtr(&__data_start);
-    const dataEnd = @intFromPtr(&__data_end);
-    const dataSize = dataEnd - dataStart;
+    const data_start = @intFromPtr(&__data_start);
+    const data_end = @intFromPtr(&__data_end);
+    const data_size = data_end - data_start;
 
-    const rodataStart = @intFromPtr(&__rodata_start);
-    const rodataEnd = @intFromPtr(&__rodata_end);
-    const rodataSize = rodataEnd - rodataStart;
+    const rodata_start = @intFromPtr(&__rodata_start);
+    const rodata_end = @intFromPtr(&__rodata_end);
+    const rodata_size = rodata_end - rodata_start;
 
-    const bssStart = @intFromPtr(&__bss_start);
-    const bssEnd = @intFromPtr(&__bss_end);
-    const bssSize = bssEnd - bssStart;
+    const bss_start = @intFromPtr(&__bss_start);
+    const bss_end = @intFromPtr(&__bss_end);
+    const bss_size = bss_end - bss_start;
 
-    const stackStart = @intFromPtr(&__stack_start);
-    const stackEnd = @intFromPtr(&__stack_end);
-    const stackSize = stackEnd - stackStart;
+    const stack_start = @intFromPtr(&__stack_start);
+    const stack_end = @intFromPtr(&__stack_end);
+    const stack_size = stack_end - stack_start;
 
-    const kernelStart = @intFromPtr(&__kernel_start);
+    const kernel_start = @intFromPtr(&__kernel_start);
     // we align forward so that the size of the region is divisible by 4K
-    const kernelEnd = std.mem.alignForward(usize, @intFromPtr(&__kernel_end), 4096);
-    const kernelSize = kernelEnd - kernelStart;
+    const kernel_end = std.mem.alignForward(usize, @intFromPtr(&__kernel_end), 4096);
+    const kernel_size = kernel_end - kernel_start;
 
     kio.info("Kernel code: {} KiB, rodata: {} KiB, data: {} KiB, bss: {} KiB, stack: {} KiB", .{
-        textSize / 1024,
-        rodataSize / 1024,
-        dataSize / 1024,
-        bssSize / 1024,
-        stackSize / 1024,
+        text_size / 1024,
+        rodata_size / 1024,
+        data_size / 1024,
+        bss_size / 1024,
+        stack_size / 1024,
     });
 
-    try reservedRegions.append(allocator, ReservedMemoryRegion{
+    try reserved_regins.append(allocator, ReservedMemoryRegion{
         .name = "kernel",
-        .noMap = true,
+        .no_map = true,
         .reusable = false,
         .system = true,
         .range = MemoryRegion{
-            .start = kernelStart,
-            .size = kernelSize,
+            .start = kernel_start,
+            .size = kernel_size,
         },
     });
 }
 
 fn addDeviceTreeReservedMemory(
     allocator: std.mem.Allocator,
-    reservedRegions: *std.ArrayListUnmanaged(ReservedMemoryRegion),
+    reserved_regions: *std.ArrayListUnmanaged(ReservedMemoryRegion),
     dtRoot: *const dt.DeviceTreeRoot,
 ) !void {
     // we need to reserve memory for the DT itself
-    const dtStart = std.mem.alignBackward(u64, @intCast(dtRoot.addr), 4096);
-    const dtEnd = std.mem.alignForward(u64, @intCast(dtRoot.addr + dtRoot.size), 4096);
+    const dt_start = std.mem.alignBackward(u64, @intCast(dtRoot.addr), 4096);
+    const dt_end = std.mem.alignForward(u64, @intCast(dtRoot.addr + dtRoot.size), 4096);
 
-    const dtRegion = ReservedMemoryRegion{
+    const dt_region = ReservedMemoryRegion{
         .name = "device-tree",
-        .noMap = true,
+        .no_map = true,
         .reusable = false,
         .system = false,
         .range = MemoryRegion{
-            .start = dtStart,
-            .size = dtEnd - dtStart,
+            .start = dt_start,
+            .size = dt_end - dt_start,
         },
     };
-    try reservedRegions.append(allocator, dtRegion);
+    try reserved_regions.append(allocator, dt_region);
 }
 
-fn printPhysicalRegions(physicalRegions: []const PhysicalMemoryRegion) void {
+fn printPhysicalRegions(physical_regions: []const PhysicalMemoryRegion) void {
     kio.info("Physical memory regions:", .{});
-    for (physicalRegions) |reg| {
+    for (physical_regions) |reg| {
         const range = reg.range;
         const sizeInKiB = range.size / 1024;
         kio.info(
@@ -305,28 +306,28 @@ fn printPhysicalRegions(physicalRegions: []const PhysicalMemoryRegion) void {
     }
 }
 
-fn printReservedRegions(reservedRegions: []const ReservedMemoryRegion) void {
+fn printReservedRegions(reserved_regions: []const ReservedMemoryRegion) void {
     kio.info("Reserved memory regions:", .{});
-    for (reservedRegions) |reg| {
+    for (reserved_regions) |reg| {
         const range = reg.range;
-        const sizeInKiB = range.size / 1024;
+        const size_in_kib = range.size / 1024;
         if (reg.system) {
             kio.info("    [0x{x:0>16}-0x{x:0>16}] <{s}> ({} KiB) system", .{
                 range.start,
                 range.end() - 1,
                 reg.name,
-                sizeInKiB,
+                size_in_kib,
             });
         } else {
-            const noMapString = if (reg.noMap) "no-map" else "map";
-            const reusableString = if (reg.reusable) "reusable" else "non-reusable";
+            const no_map_string = if (reg.no_map) "no-map" else "map";
+            const reusable_string = if (reg.reusable) "reusable" else "non-reusable";
             kio.info("    [0x{x:0>16}-0x{x:0>16}] <{s}> ({} KiB) {s} {s}", .{
                 range.start,
                 range.end() - 1,
                 reg.name,
-                sizeInKiB,
-                noMapString,
-                reusableString,
+                size_in_kib,
+                no_map_string,
+                reusable_string,
             });
         }
     }
@@ -335,40 +336,40 @@ fn printReservedRegions(reservedRegions: []const ReservedMemoryRegion) void {
 fn printUsableRegions(regions: []const MemoryRegion) void {
     kio.info("Usable memory regions:", .{});
     for (regions) |reg| {
-        const sizeInKiB = reg.size / 1024;
+        const size_in_kib = reg.size / 1024;
         kio.info(
             "    [0x{x:0>16}-0x{x:0>16}] ({} KiB)",
-            .{ reg.start, reg.end() - 1, sizeInKiB },
+            .{ reg.start, reg.end() - 1, size_in_kib },
         );
     }
 }
 
-pub fn getFrameRegions(allocator: std.mem.Allocator, dtRoot: *const dt.DeviceTreeRoot) ![]const MemoryRegion {
-    var physicalRegions = try parseMemoryRegions(allocator, &dtRoot.node);
-    defer physicalRegions.deinit(allocator);
+pub fn getFrameRegions(allocator: std.mem.Allocator, dt_root: *const dt.DeviceTreeRoot) ![]const MemoryRegion {
+    var phyiscal_regions = try parseMemoryRegions(allocator, &dt_root.node);
+    defer phyiscal_regions.deinit(allocator);
 
-    var reservedRegions = try parseReservedMemoryRegions(allocator, &dtRoot.node);
-    defer reservedRegions.deinit(allocator);
+    var reserved_regions = try parseReservedMemoryRegions(allocator, &dt_root.node);
+    defer reserved_regions.deinit(allocator);
 
-    try addDeviceTreeReservedMemory(allocator, &reservedRegions, dtRoot);
-    try addKernelReservedMemory(allocator, &reservedRegions);
+    try addDeviceTreeReservedMemory(allocator, &reserved_regions, dt_root);
+    try addKernelReservedMemory(allocator, &reserved_regions);
 
-    printPhysicalRegions(physicalRegions.items);
-    printReservedRegions(reservedRegions.items);
+    printPhysicalRegions(phyiscal_regions.items);
+    printReservedRegions(reserved_regions.items);
 
-    var usableRegions = try getUsableRegions(
+    var usable_regions = try getUsableRegions(
         allocator,
-        physicalRegions.items,
-        reservedRegions.items,
+        phyiscal_regions.items,
+        reserved_regions.items,
     );
 
-    printUsableRegions(usableRegions.items);
+    printUsableRegions(usable_regions.items);
 
-    return usableRegions.toOwnedSlice();
+    return usable_regions.toOwnedSlice();
 }
 
-const HHDMStart = 0xffffffc000000000;
+const hhdm_start = 0xffffffc000000000;
 
 pub fn physicalToHHDMAddress(phys: PhysicalAddress) VirtualAddress {
-    return VirtualAddress.make(0xffffffc000000000 + phys.asInt());
+    return VirtualAddress.make(hhdm_start + phys.asInt());
 }

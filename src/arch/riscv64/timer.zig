@@ -4,7 +4,7 @@ const csr = @import("csr.zig").CSR;
 const sbi = @import("sbi.zig");
 const trap = @import("trap.zig");
 
-pub const riscvClockSource = time.ClockSource{
+pub const riscv_clock_source = time.ClockSource{
     .init = init,
     .enable = enable,
     .disable = disable,
@@ -12,29 +12,29 @@ pub const riscvClockSource = time.ClockSource{
 };
 
 // only written once
-var counterCmp: u64 = undefined;
+var counter_cmp: u64 = undefined;
 
-fn init(dtRoot: *const dt.DeviceTreeRoot) time.ClockSourceInitError!u64 {
-    const cpus = dtRoot.node.getChild("cpus") orelse
+fn init(dt_root: *const dt.DeviceTreeRoot) time.ClockSourceInitError!u64 {
+    const cpus = dt_root.node.getChild("cpus") orelse
         return error.InvalidDeviceTree;
     const frequency = cpus.getPropertyU32("timebase-frequency") orelse
         return error.InvalidDeviceTree;
 
-    const nsPerIncrement = time.NanosecondsPerSecond / frequency;
-    counterCmp = time.NanosecondsPerTick / nsPerIncrement;
+    const ns_per_increment = time.ns_per_second / frequency;
+    counter_cmp = time.ns_per_tick / ns_per_increment;
 
     return frequency;
 }
 
 fn enable() void {
-    const currentTime = csr.time.read();
-    const val = currentTime + counterCmp;
+    const current_time = csr.time.read();
+    const val = current_time + counter_cmp;
     sbi.setTimer(val);
-    trap.enableInterrupt(@intCast(@intFromEnum(trap.InterruptCode.SupervisorTimerInterrupt)));
+    trap.enableInterrupt(@intCast(@intFromEnum(trap.InterruptCode.supervisor_timer)));
 }
 
 fn disable() void {
-    trap.disableInterrupt(@intCast(@intFromEnum(trap.InterruptCode.SupervisorTimerInterrupt)));
+    trap.disableInterrupt(@intCast(@intFromEnum(trap.InterruptCode.supervisor_timer)));
 }
 
 fn readCounter() u64 {
@@ -43,8 +43,8 @@ fn readCounter() u64 {
 
 pub fn tick() void {
     time.tick();
-    trap.clearPendingInterrupt(@intFromEnum(trap.InterruptCode.SupervisorTimerInterrupt));
-    const currentTime = csr.time.read();
-    const val = currentTime + counterCmp;
+    trap.clearPendingInterrupt(@intFromEnum(trap.InterruptCode.supervisor_timer));
+    const current_time = csr.time.read();
+    const val = current_time + counter_cmp;
     sbi.setTimer(val);
 }

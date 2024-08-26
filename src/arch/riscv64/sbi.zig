@@ -1,17 +1,17 @@
 // documentation: https://github.com/riscv-non-isa/riscv-sbi-doc
 
-pub const SBIBaseExtID = 0x10;
-pub const SBIGetSpecificationVersion = 0;
-pub const SBIGetImplementationID = 1;
-pub const SBIGetImplementationVersion = 2;
+pub const sbi_base_ext_id = 0x10;
+pub const sbi_get_specification_version = 0;
+pub const sbi_get_implementation_id = 1;
+pub const sbi_get_implementation_version = 2;
 
-pub const SBIDebugConsoleExtID = 0x4442434E;
-pub const SBIDebugConsoleConWrite = 0;
+pub const sbi_debug_console_ext_id = 0x4442434E;
+pub const sbi_debug_con_write = 0;
 
-pub const SBITimerExtID = 0x54494D45;
-pub const SBITimerSetTimer = 0;
+pub const sbi_timer_ext_id = 0x54494D45;
+pub const sbi_timer_set_timer = 0;
 
-pub const SBIImplementations: []const []const u8 = &.{
+pub const sbi_implementations: []const []const u8 = &.{
     "Berkeley Boot Loader (BBL)",
     "OpenSBI",
     "Xvisor",
@@ -27,18 +27,18 @@ pub const SBIImplementations: []const []const u8 = &.{
 };
 
 const SBIErrorCode = enum(i64) {
-    SBI_SUCCESS = 0,
-    SBI_ERR_FAILED = 1,
-    SBI_ERR_NOT_SUPPORTED = 2,
-    SBI_ERR_INVALID_PARAM = 3,
-    SBI_ERR_DENIED = 4,
-    SBI_ERR_INVALID_ADDRESS = 5,
-    SBI_ERR_ALREADY_AVAILABLE = 6,
-    SBI_ERR_ALREADY_STARTED = 7,
-    SBI_ERR_ALREADY_STOPPED = 8,
-    SBI_ERR_NO_SHMEM = 9,
-    SBI_ERR_INVALID_STATE = 10,
-    SBI_ERR_BAD_RANGE = 11,
+    success = 0,
+    err_failed = 1,
+    err_not_supported = 2,
+    err_invalid_param = 3,
+    err_denied = 4,
+    err_invalid_addresss = 5,
+    err_already_available = 6,
+    err_already_started = 7,
+    err_already_stopped = 8,
+    err_no_shmem = 9,
+    err_invalid_state = 10,
+    err_bad_range = 11,
 };
 
 const SBIError = error{
@@ -78,41 +78,41 @@ pub fn call(extension: u64, function: u64, arg0: u64, arg1: u64, arg2: u64) SBIE
     const errorCode: SBIErrorCode = @enumFromInt(errorCodeVal);
 
     switch (errorCode) {
-        .SBI_SUCCESS => return val,
-        .SBI_ERR_FAILED => return error.Failed,
-        .SBI_ERR_NOT_SUPPORTED => return error.NotSupported,
-        .SBI_ERR_INVALID_PARAM => return error.InvalidParam,
-        .SBI_ERR_DENIED => return error.Denied,
-        .SBI_ERR_INVALID_ADDRESS => return error.InvalidAddress,
-        .SBI_ERR_ALREADY_AVAILABLE => return error.AlreadyAvailable,
-        .SBI_ERR_ALREADY_STARTED => return error.AlreadyStarted,
-        .SBI_ERR_ALREADY_STOPPED => return error.AlreadyStopped,
-        .SBI_ERR_NO_SHMEM => return error.NoSharedMemory,
-        .SBI_ERR_INVALID_STATE => return error.InvalidState,
-        .SBI_ERR_BAD_RANGE => return error.BadRange,
+        .success => return val,
+        .err_failed => return error.Failed,
+        .err_not_supported => return error.NotSupported,
+        .err_invalid_param => return error.InvalidParam,
+        .err_denied => return error.Denied,
+        .err_invalid_addresss => return error.InvalidAddress,
+        .err_already_available => return error.AlreadyAvailable,
+        .err_already_started => return error.AlreadyStarted,
+        .err_already_stopped => return error.AlreadyStopped,
+        .err_no_shmem => return error.NoSharedMemory,
+        .err_invalid_state => return error.InvalidState,
+        .err_bad_range => return error.BadRange,
     }
 }
 
 pub fn debugConsoleWrite(str: []const u8) SBIError!void {
     const addr_int = @intFromPtr(str.ptr);
-    _ = try call(SBIDebugConsoleExtID, SBIDebugConsoleConWrite, str.len, addr_int, 0);
+    _ = try call(sbi_debug_console_ext_id, sbi_debug_con_write, str.len, addr_int, 0);
 }
 
 pub fn getSpecificationVersion() u64 {
-    const res = call(SBIBaseExtID, SBIGetSpecificationVersion, 0, 0, 0) catch unreachable;
+    const res = call(sbi_base_ext_id, sbi_get_specification_version, 0, 0, 0) catch unreachable;
     return @intCast(res);
 }
 
 pub fn getImplementationID() u64 {
-    const res = call(SBIBaseExtID, SBIGetImplementationID, 0, 0, 0) catch unreachable;
+    const res = call(sbi_base_ext_id, sbi_get_implementation_id, 0, 0, 0) catch unreachable;
     return @intCast(res);
 }
 
 pub fn getImplementationVersion() u64 {
-    const res = call(SBIBaseExtID, SBIGetImplementationVersion, 0, 0, 0) catch unreachable;
+    const res = call(sbi_base_ext_id, sbi_get_implementation_version, 0, 0, 0) catch unreachable;
     return @intCast(res);
 }
 
 pub fn setTimer(stime: u64) void {
-    _ = call(SBITimerExtID, SBITimerSetTimer, stime, 0, 0) catch unreachable;
+    _ = call(sbi_timer_ext_id, sbi_timer_set_timer, stime, 0, 0) catch unreachable;
 }

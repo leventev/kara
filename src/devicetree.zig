@@ -3,48 +3,48 @@
 const kio = @import("kio.zig");
 const std = @import("std");
 
-const blobMagicIdx = 0x0;
-const totalSizeIdx = 0x1;
-const dtStructsOffsetIdx = 0x2;
-const dtStringsOffsetIdx = 0x3;
-const memRsvmapOffsetIdx = 0x4;
-const versionIdx = 0x5;
-const lastCompatibleVersionIdx = 0x6;
-const bootCpuIDPhyIdx = 0x7;
-const dtStringsSizeIdx = 0x8;
-const dtStructsSizeIdx = 0x9;
+const blob_magic_idx = 0x0;
+const total_size_idx = 0x1;
+const dt_structs_offset_idx = 0x2;
+const dt_strings_offset_idx = 0x3;
+const mem_rsvmap_offset_idx = 0x4;
+const version_idx = 0x5;
+const last_compatible_version_idx = 0x6;
+const boot_cpu_id_phys_idx = 0x7;
+const dt_strings_size_idx = 0x8;
+const dt_structs_size_idx = 0x9;
 
-const propValueLenIdx = 0x0;
-const propNameOffsetIdx = 0x1;
-const propValueIdx = 0x2;
+const prop_value_len_idx = 0x0;
+const prop_name_offset_idx = 0x1;
+const prop_value_idx = 0x2;
 
 const TokenType = enum(u32) {
-    beginNode = 1,
-    endNode = 2,
+    begin_node = 1,
+    end_node = 2,
     property = 3,
     nop = 4,
     end = 9,
 };
 
-const DeviceTreeBlobMagic = 0xD00DFEED;
+const device_tree_blob_magic = 0xD00DFEED;
 
 const bigToNative = std.mem.bigToNative;
 
 fn getString(blob: [*]u32, offset: u32) [*:0]const u8 {
-    const stringBlockOffset = bigToNative(u32, blob[dtStringsOffsetIdx]);
-    const stringBlockStart = @as([*]u8, @ptrCast(blob)) + @as(usize, stringBlockOffset);
-    return @ptrCast(stringBlockStart + @as(usize, offset));
+    const string_block_offset = bigToNative(u32, blob[dt_strings_offset_idx]);
+    const string_block_start = @as([*]u8, @ptrCast(blob)) + @as(usize, string_block_offset);
+    return @ptrCast(string_block_start + @as(usize, offset));
 }
 
 fn readToken(tok: u32) TokenType {
-    const tokenVal = bigToNative(u32, tok);
-    return @enumFromInt(tokenVal);
+    const token_val = bigToNative(u32, tok);
+    return @enumFromInt(token_val);
 }
 
 fn readBeginNode(ptr: [*]u32) []const u8 {
-    const nodeNamePtr: [*:0]const u8 = @ptrCast(ptr);
-    const nodeName: []const u8 = std.mem.span(nodeNamePtr);
-    return nodeName;
+    const node_name_ptr: [*:0]const u8 = @ptrCast(ptr);
+    const node_name: []const u8 = std.mem.span(node_name_ptr);
+    return node_name;
 }
 
 pub const DeviceTreeNode = struct {
@@ -73,11 +73,11 @@ pub const DeviceTreeNode = struct {
 
 const NodeProperty = struct { name: []const u8, value: []const u8 };
 fn readProperty(blob: [*]u32, ptr: [*]u32) NodeProperty {
-    const valueLen = bigToNative(u32, ptr[propValueLenIdx]);
-    const nameOffset = bigToNative(u32, ptr[propNameOffsetIdx]);
+    const value_len = bigToNative(u32, ptr[prop_value_len_idx]);
+    const name_offset = bigToNative(u32, ptr[prop_name_offset_idx]);
 
-    const name = getString(blob, nameOffset);
-    const value = @as([*]const u8, @ptrCast(&ptr[propValueIdx]))[0..valueLen];
+    const name = getString(blob, name_offset);
+    const value = @as([*]const u8, @ptrCast(&ptr[prop_value_idx]))[0..value_len];
 
     return NodeProperty{
         .name = std.mem.span(name),
@@ -87,8 +87,8 @@ fn readProperty(blob: [*]u32, ptr: [*]u32) NodeProperty {
 
 const DeviceTreeNodeRead = struct { node: DeviceTreeNode, ptrForward: usize };
 fn readNode(allocator: std.mem.Allocator, blob: [*]u32, ptr: [*]u32) !DeviceTreeNodeRead {
-    var ptrIdx: usize = 0;
-    var continueReading = true;
+    var ptr_idx: usize = 0;
+    var continue_reading = true;
 
     // NOTE: we do not need to errdefer deallocate the allocated memory
     // since if we can't parse the device tree the kernel should halt thus
@@ -96,28 +96,28 @@ fn readNode(allocator: std.mem.Allocator, blob: [*]u32, ptr: [*]u32) !DeviceTree
     var properties = try std.StringArrayHashMapUnmanaged([]const u8).init(allocator, &.{}, &.{});
     var children = try std.StringArrayHashMapUnmanaged(DeviceTreeNode).init(allocator, &.{}, &.{});
 
-    while (continueReading) {
-        const tokenType: TokenType = readToken(ptr[ptrIdx]);
-        ptrIdx += 1;
+    while (continue_reading) {
+        const tokenType: TokenType = readToken(ptr[ptr_idx]);
+        ptr_idx += 1;
         switch (tokenType) {
-            .beginNode => {
-                const name = readBeginNode(ptr + ptrIdx);
-                ptrIdx += std.math.divCeil(usize, name.len + 1, @sizeOf(u32)) catch unreachable;
+            .begin_node => {
+                const name = readBeginNode(ptr + ptr_idx);
+                ptr_idx += std.math.divCeil(usize, name.len + 1, @sizeOf(u32)) catch unreachable;
 
-                const read = try readNode(allocator, blob, ptr + ptrIdx);
-                ptrIdx += read.ptrForward;
+                const read = try readNode(allocator, blob, ptr + ptr_idx);
+                ptr_idx += read.ptrForward;
 
                 try children.put(allocator, name, read.node);
             },
             .property => {
-                const prop = readProperty(blob, ptr + ptrIdx);
+                const prop = readProperty(blob, ptr + ptr_idx);
                 const words = std.math.divCeil(usize, prop.value.len, @sizeOf(u32)) catch unreachable;
-                ptrIdx += 2 + words;
+                ptr_idx += 2 + words;
 
                 try properties.put(allocator, prop.name, prop.value);
             },
             .nop => {},
-            .end, .endNode => continueReading = false,
+            .end, .end_node => continue_reading = false,
         }
     }
 
@@ -126,22 +126,22 @@ fn readNode(allocator: std.mem.Allocator, blob: [*]u32, ptr: [*]u32) !DeviceTree
             .children = children,
             .properties = properties,
         },
-        .ptrForward = ptrIdx,
+        .ptrForward = ptr_idx,
     };
 }
 
 pub fn printDeviceTree(path: []const u8, node: *const DeviceTreeNode, depth: usize) void {
-    const spaceCount = depth * 4;
+    const space_count = depth * 4;
     var buf: [256]u8 = undefined;
-    for (0..spaceCount) |i| {
+    for (0..space_count) |i| {
         buf[i] = ' ';
     }
 
-    kio.info("{s}{s}:", .{ buf[0..spaceCount], path });
+    kio.info("{s}{s}:", .{ buf[0..space_count], path });
 
     var prop_it = node.properties.iterator();
     while (prop_it.next()) |prop| {
-        kio.info("{s}{s} = {any}", .{ buf[0..spaceCount], prop.key_ptr.*, prop.value_ptr.* });
+        kio.info("{s}{s} = {any}", .{ buf[0..space_count], prop.key_ptr.*, prop.value_ptr.* });
     }
 
     var child_it = node.children.iterator();
@@ -153,29 +153,29 @@ pub fn printDeviceTree(path: []const u8, node: *const DeviceTreeNode, depth: usi
 pub const DeviceTreeRoot = struct { node: DeviceTreeNode, addr: usize, size: usize };
 pub fn readDeviceTreeBlob(allocator: std.mem.Allocator, blobPtr: *void) !DeviceTreeRoot {
     const blob: [*]u32 = @ptrCast(@alignCast(blobPtr));
-    const magic = bigToNative(u32, blob[blobMagicIdx]);
-    if (magic != DeviceTreeBlobMagic) {
+    const magic = bigToNative(u32, blob[blob_magic_idx]);
+    if (magic != device_tree_blob_magic) {
         return error.MagicMismatch;
     }
 
-    const structBlockOffset = bigToNative(u32, blob[dtStructsOffsetIdx]);
-    const structBlockStart = @as([*]u8, @ptrCast(blob)) + @as(usize, structBlockOffset);
+    const struct_block_offset = bigToNative(u32, blob[dt_structs_offset_idx]);
+    const struct_block_start = @as([*]u8, @ptrCast(blob)) + @as(usize, struct_block_offset);
 
-    const tokenPtr: [*]u32 = @ptrCast(@alignCast(structBlockStart));
-    const tokenType = readToken(tokenPtr[0]);
-    if (tokenType != .beginNode)
+    const token_ptr: [*]u32 = @ptrCast(@alignCast(struct_block_start));
+    const token_type = readToken(token_ptr[0]);
+    if (token_type != .begin_node)
         return error.InvalidDeviceTree;
 
     // name should be empty but we don't need to check
-    const name = readBeginNode(tokenPtr + 1);
+    const name = readBeginNode(token_ptr + 1);
 
     const words = std.math.divCeil(usize, name.len + 1, @sizeOf(u32)) catch unreachable;
-    const ptr = tokenPtr + 1 + words;
-    const rootNodeRead = try readNode(allocator, blob, ptr);
-    const rootNode = rootNodeRead.node;
+    const ptr = token_ptr + 1 + words;
+    const root_node_read = try readNode(allocator, blob, ptr);
+    const root_node = root_node_read.node;
     return DeviceTreeRoot{
         .addr = @intFromPtr(blobPtr),
-        .node = rootNode,
-        .size = bigToNative(u32, blob[totalSizeIdx]),
+        .node = root_node,
+        .size = bigToNative(u32, blob[total_size_idx]),
     };
 }

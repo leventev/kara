@@ -46,13 +46,13 @@ fn init() void {
     const machine = dt_root.node.getProperty("model") orelse @panic("Invalid device tree");
     kio.info("Machine model: {s}", .{machine});
 
-    const frameRegions = mm.getFrameRegions(static_mem_allocator, &dt_root) catch
+    const frame_regions = mm.getFrameRegions(static_mem_allocator, &dt_root) catch
         @panic("Failed to initalize physical memory allocator");
 
-    phys.init(static_mem_allocator, frameRegions) catch
+    phys.init(static_mem_allocator, frame_regions) catch
         @panic("Failed to initialize physical frame allocator");
 
-    static_mem_allocator.free(frameRegions);
+    static_mem_allocator.free(frame_regions);
 
     arch.initInterrupts();
 

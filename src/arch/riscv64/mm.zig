@@ -2,20 +2,19 @@ const std = @import("std");
 const mm = @import("../../mem/mm.zig");
 const kio = @import("../../kio.zig");
 
-pub const EntriesPerPageTable = 512;
+pub const entries_per_tbl = 512;
 
-// TODO: other arches
 pub const SATP = packed struct(u64) {
-    physicalPageNumber: u44,
-    addresssSpaceID: u16,
+    phys_page_num: u44,
+    addr_space_id: u16,
     mode: Mode,
 
     pub const Mode = enum(u4) {
-        Bare = 0,
-        Sv39 = 8,
-        Sv48 = 9,
-        Sv57 = 10,
-        Sv64 = 11,
+        bare = 0,
+        sv39 = 8,
+        sv48 = 9,
+        sv57 = 10,
+        sv64 = 11,
     };
 };
 
@@ -32,9 +31,9 @@ pub const PageTableEntry = packed struct(u64) {
     accessed: bool,
     dirty: bool,
     __reserved: u2,
-    pageNumber0: u9,
-    pageNumber1: u9,
-    pageNumber2: u9,
+    page_num_0: u9,
+    page_num_1: u9,
+    page_num_2: u9,
     __reserved2: u27,
 
     pub const Flags = packed struct(u5) {
@@ -49,9 +48,9 @@ pub const PageTableEntry = packed struct(u64) {
 // TODO: support other addressing modes like Sv48, Sv57...
 pub const Sv39PhysicalAddress = packed struct(u64) {
     offset: u12,
-    pageNumber0: u9,
-    pageNumber1: u9,
-    pageNumber2: u9,
+    page_num_0: u9,
+    page_num_1: u9,
+    page_num_2: u9,
     __unused: u25,
 
     const Self = @This();
@@ -71,9 +70,9 @@ pub const Sv39PhysicalAddress = packed struct(u64) {
 
 pub const Sv39VirtualAddress = packed struct(u64) {
     offset: u12,
-    pageNumber0: u9,
-    pageNumber1: u9,
-    pageNumber2: u9,
+    page_num_0: u9,
+    page_num_1: u9,
+    page_num_2: u9,
     __unused: u25,
 
     const Self = @This();
@@ -92,19 +91,16 @@ pub const Sv39VirtualAddress = packed struct(u64) {
 };
 
 pub const PageTable = struct {
-    entries: *[EntriesPerPageTable]PageTableEntry,
+    entries: *[entries_per_tbl]PageTableEntry,
 
     const Self = @This();
 
-    // this function is inline since we need to use it before paging is enabled
-    // and it's small
     pub inline fn fromAddress(addr: u64) PageTable {
         return .{
             .entries = @ptrFromInt(addr),
         };
     }
 
-    // inline for the same reason as fromAddress
     pub inline fn writeEntry(
         self: *Self,
         idx: usize,
@@ -112,16 +108,16 @@ pub const PageTable = struct {
         entryType: PageEntryType,
         flags: PageTableEntry.Flags,
     ) !void {
-        if (idx >= EntriesPerPageTable)
+        if (idx >= entries_per_tbl)
             return error.InvalidIdx;
 
         if (!phys.isPageAligned())
             return error.InvalidAddress;
 
         _ = switch (entryType) {
-            PageEntryType.leaf2M => if (phys.pageNumber0 != 0)
+            PageEntryType.leaf2M => if (phys.page_num_0 != 0)
                 return error.InvalidAddress,
-            PageEntryType.leaf1G => if (phys.pageNumber0 != 0 or phys.pageNumber1 != 0)
+            PageEntryType.leaf1G => if (phys.page_num_0 != 0 or phys.page_num_1 != 0)
                 return error.InvalidAddress,
             PageEntryType.branch => if (flags.executable or flags.readable or flags.writable)
                 return error.InvalidFlags,
@@ -133,9 +129,9 @@ pub const PageTable = struct {
             .flags = flags,
             .accessed = false,
             .dirty = false,
-            .pageNumber0 = phys.pageNumber0,
-            .pageNumber1 = phys.pageNumber1,
-            .pageNumber2 = phys.pageNumber2,
+            .page_num_0 = phys.page_num_0,
+            .page_num_1 = phys.page_num_1,
+            .page_num_2 = phys.page_num_2,
             .__reserved = 0,
             .__reserved2 = 0,
         };
@@ -143,7 +139,7 @@ pub const PageTable = struct {
 
     // inline for the same reason as fromAddress
     pub inline fn zeroEntry(self: *Self, idx: usize) !void {
-        if (idx >= EntriesPerPageTable)
+        if (idx >= entries_per_tbl)
             return error.InvalidIdx;
 
         self.entries[idx] = PageTableEntry{
@@ -157,17 +153,16 @@ pub const PageTable = struct {
             },
             .accessed = false,
             .dirty = false,
-            .pageNumber0 = 0,
-            .pageNumber1 = 0,
-            .pageNumber2 = 0,
+            .page_num_0 = 0,
+            .page_num_1 = 0,
+            .page_num_2 = 0,
             .__reserved = 0,
             .__reserved2 = 0,
         };
     }
 };
 
-var rootPageTable: [EntriesPerPageTable]PageTableEntry align(4096) linksection(".bss") = undefined;
-//var kernelspacePageTable: [EntriesPerPageTable]mm.PageTableEntry align(4096) linksection(".bss") = undefined;
+var root_page_table: [entries_per_tbl]PageTableEntry align(4096) linksection(".bss") = undefined;
 
 fn writeSATP(satp: SATP) void {
     const val: u64 = @bitCast(satp);
@@ -179,22 +174,22 @@ fn writeSATP(satp: SATP) void {
 
 pub fn setupPaging() void {
     // since rootPageTable is in .bss it should be all zeros
-    var pageTable = PageTable.fromAddress(@intFromPtr(&rootPageTable));
+    var page_table = PageTable.fromAddress(@intFromPtr(&root_page_table));
 
-    const KernelRegionStart = 0x80000000;
-    const KernelRegionSize = 0x40000000;
-    const KernelRegionEnd = KernelRegionStart + KernelRegionSize;
+    const kernel_reg_start = 0x80000000;
+    const kernel_reg_size = 0x40000000;
+    const kernel_reg_end = kernel_reg_start + kernel_reg_size;
 
-    const DirectMappingStart = 0xffffffc000000000;
-    const DirectMappingSize = 128 * 0x40000000;
-    const DirectMappingEnd = DirectMappingStart + DirectMappingSize;
+    const hhdm_reg_start = 0xffffffc000000000;
+    const hhdm_reg_size = 128 * 0x40000000;
+    const hhdm_reg_end = hhdm_reg_start + hhdm_reg_size;
 
     // unfortunately llvm does not support -mcmodel=large yet so we have to identity map the kernel for now
     // TODO: map the kernel high
     // TODO: map smaller pages and set correct flags
-    pageTable.writeEntry(
+    page_table.writeEntry(
         2,
-        Sv39PhysicalAddress.make(KernelRegionStart),
+        Sv39PhysicalAddress.make(kernel_reg_start),
         PageEntryType.leaf1G,
         PageTableEntry.Flags{
             .executable = true,
@@ -208,7 +203,7 @@ pub fn setupPaging() void {
     // map 128GiB directly
     for (256..256 + 128, 0..) |i, j| {
         const physAddr = Sv39PhysicalAddress.make(j * (1024 * 1024 * 1024));
-        pageTable.writeEntry(
+        page_table.writeEntry(
             i,
             physAddr,
             PageEntryType.leaf1G,
@@ -222,25 +217,25 @@ pub fn setupPaging() void {
         ) catch unreachable;
     }
 
-    const pageTablePhys = @intFromPtr(&rootPageTable);
-    const pageNumber: u44 = @intCast(std.math.shr(u64, pageTablePhys, 12));
+    const page_table_phys = @intFromPtr(&root_page_table);
+    const page_num: u44 = @intCast(std.math.shr(u64, page_table_phys, 12));
     const satp = SATP{
-        .mode = SATP.Mode.Sv39,
-        .addresssSpaceID = 0,
-        .physicalPageNumber = pageNumber,
+        .mode = SATP.Mode.sv39,
+        .addr_space_id = 0,
+        .phys_page_num = page_num,
     };
 
     writeSATP(satp);
 
     kio.info("Virtual memory map:", .{});
     kio.info("    Kernel: [0x{x:0>16}-0x{x:0>16}] ({} KiB)", .{
-        KernelRegionStart,
-        KernelRegionEnd,
-        KernelRegionSize / 1024,
+        kernel_reg_start,
+        kernel_reg_end,
+        kernel_reg_size / 1024,
     });
     kio.info("      HHDM: [0x{x:0>16}-0x{x:0>16}] ({} KiB)", .{
-        DirectMappingStart,
-        DirectMappingEnd,
-        DirectMappingSize / 1024,
+        hhdm_reg_start,
+        hhdm_reg_end,
+        hhdm_reg_size / 1024,
     });
 }

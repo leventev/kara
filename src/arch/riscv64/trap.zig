@@ -14,7 +14,7 @@ const TrapData = struct {
     fn printGPR(self: Self, writer: anytype, idx: usize) !void {
         std.debug.assert(idx < 32);
 
-        const alternativeNames = [_][]const u8{
+        const alternative_names = [_][]const u8{
             "zr", "ra", "sp",  "gp",  "tp", "t0",
             "t1", "t2", "s0",  "s1",  "a0", "a1",
             "a2", "a3", "a4",  "a5",  "a6", "a7",
@@ -23,12 +23,12 @@ const TrapData = struct {
             "t5", "t6",
         };
 
-        const name = alternativeNames[idx];
-        var nameTotalLen = 2 + name.len;
-        if (idx > 9) nameTotalLen += 1;
+        const name = alternative_names[idx];
+        var name_total_len = 2 + name.len;
+        if (idx > 9) name_total_len += 1;
 
-        const alignTo = 7;
-        const rem = alignTo - nameTotalLen;
+        const align_to = 7;
+        const rem = align_to - name_total_len;
 
         try writer.print("x{}/{s}", .{ idx, name });
         try writer.writeByteNTimes(' ', rem);
@@ -36,17 +36,17 @@ const TrapData = struct {
     }
 
     fn printGPRs(self: Self, logLevel: kio.LogLevel) void {
-        const totalRegs = 32;
-        const regsPerLine = 4;
-        const lines = totalRegs / regsPerLine;
+        const total_regs = 32;
+        const regs_per_line = 4;
+        const lines = total_regs / regs_per_line;
 
         var buff: [128]u8 = undefined;
         var stream = std.io.fixedBufferStream(&buff);
         var writer = stream.writer();
 
         for (0..lines) |i| {
-            for (0..regsPerLine) |j| {
-                self.printGPR(writer, i * regsPerLine + j) catch unreachable;
+            for (0..regs_per_line) |j| {
+                self.printGPR(writer, i * regs_per_line + j) catch unreachable;
                 writer.writeByte(' ') catch unreachable;
             }
             kio.print(logLevel, "{s}", .{stream.getWritten()});
@@ -102,163 +102,163 @@ const TrapCause = packed struct(u64) {
 };
 
 const ExceptionCode = enum(u63) {
-    InstructionAddressMisaligned = 0,
-    InstructionAccessFault = 1,
-    IllegalInstruction = 2,
-    Breakpoint = 3,
-    LoadAddressMisaligned = 4,
-    LoadAccessFault = 5,
-    StoreOrAMOAddressMisaligned = 6,
-    StoreOrAMOAccessFault = 7,
-    EcallUMode = 8,
-    EcallSMode = 9,
-    EcallMMode = 11, // read only fix 0
-    InstructionPageFault = 12,
-    LoadPageFault = 13,
-    StoreOrAMOPageFault = 15,
-    SoftwareCheck = 18,
-    HardwareError = 19,
+    instruction_address_misaligned = 0,
+    instruction_access_fault = 1,
+    illegal_instruction = 2,
+    breakpoint = 3,
+    load_address_misaligned = 4,
+    load_access_fault = 5,
+    store_or_amo_address_misaligned = 6,
+    store_or_amo_access_fault = 7,
+    ecall_u_mode = 8,
+    ecall_s_mode = 9,
+    ecall_m_mode = 11, // read only fix 0
+    instruction_page_fault = 12,
+    load_page_fault = 13,
+    store_or_amo_page_fault = 15,
+    software_check = 18,
+    hardware_error = 19,
 };
 
 pub const InterruptCode = enum(u63) {
-    SupervisorSoftwareInterrupt = 1,
-    MachineSoftwareInterrupt = 3,
-    SupervisorTimerInterrupt = 5,
-    MachineTimerInterrupt = 7,
-    SupervisorExternalInterrupt = 9,
-    MachineExternalInterrupt = 11,
-    CounterOverflowInterrupt = 13,
+    supervisor_software = 1,
+    machine_software = 3,
+    supervisor_timer = 5,
+    machine_timer = 7,
+    supervisor_external = 9,
+    machine_external = 11,
+    counter_overflow = 13,
 };
 
 const MPP = enum(u2) {
-    User = 0b00,
-    Supervisor = 0b01,
-    Reserved = 0b10,
-    Machine = 0b11,
+    user = 0b00,
+    supervisor = 0b01,
+    __reserved = 0b10,
+    machine = 0b11,
 };
 
 const SPP = enum(u1) {
-    User = 0,
-    Supervisor = 1,
+    user = 0,
+    supervisor = 1,
 };
 
 const VectorStatus = enum(u2) {
-    Off = 0,
-    Initial = 1,
-    Clean = 2,
-    Dirty = 3,
+    off = 0,
+    initial = 1,
+    clean = 2,
+    dirty = 3,
 };
 
 const FloatStatus = enum(u2) {
-    Off = 0,
-    Initial = 1,
-    Clean = 2,
-    Dirty = 3,
+    off = 0,
+    initial = 1,
+    clean = 2,
+    dirty = 3,
 };
 
 const ExtraExtensionStatus = enum(u2) {
-    AllOff = 0,
-    NoneDirtyOrClean = 1,
-    NoneDirtySomeClean = 2,
-    SomeDirty = 3,
+    all_off = 0,
+    none_dirt_or_clean = 1,
+    none_dirt_some_clean = 2,
+    some_dirty = 3,
 };
 
 const MPRV = enum(u1) {
-    Normal = 0,
-    BehaveLikeMPP = 1,
+    normal = 0,
+    behave_like_mpp = 1,
 };
 
 const SUM = enum(u1) {
-    Prohibited = 0,
-    Permitted = 1,
+    prohibited = 0,
+    permitted = 1,
 };
 
 const XLength = enum(u2) {
-    X32 = 1,
-    X64 = 2,
-    X128 = 3,
+    x32 = 1,
+    x64 = 2,
+    x128 = 3,
 };
 
 const MStatus = packed struct(u64) {
     __reserved1: u1,
-    supervisorInterruptEnable: bool,
+    supervisor_interrupt_enable: bool,
     __reserved2: u1,
-    machineInterruptEnable: bool,
+    machine_interrupt_enable: bool,
     __reserved3: u1,
-    supervisorPreviousInterruptEnable: bool,
-    userBigEndian: bool,
-    machinePreviousInterruptEnable: bool,
-    supervisorPreviousPrivilege: SPP,
-    vectorStatus: VectorStatus,
-    machinePreviousPrivilege: MPP,
-    floatStatus: FloatStatus,
-    extraExtensionStatus: ExtraExtensionStatus,
-    memoryPrivilege: MPRV,
-    supervisorUserMemoryAccessable: bool,
-    executableMemoryReadable: bool,
-    trapVirtualMemory: bool,
-    timeoutWait: bool,
-    trapSret: bool,
+    supervisor_previous_interrupt_enable: bool,
+    user_big_endian: bool,
+    machine_previous_interrupt_enable: bool,
+    supervisor_previous_privilege: SPP,
+    vector_status: VectorStatus,
+    machine_previous_privilege: MPP,
+    float_status: FloatStatus,
+    extra_extension_status: ExtraExtensionStatus,
+    memory_privilege: MPRV,
+    supervisor_user_memory_accessable: bool,
+    executable_memory_read: bool,
+    trap_virtual_memory: bool,
+    timeout_wait: bool,
+    trap_sret: bool,
     __reserved4: u9,
-    userXLen: XLength,
-    supervisorXLen: XLength,
-    supervisorBigEndian: bool,
-    machineBigEndian: bool,
+    user_xlen: XLength,
+    supervisor_xlen: XLength,
+    supervisor_big_endian: bool,
+    machine_big_endian: bool,
     __reserved5: u25,
-    stateDirty: bool,
+    state_dirty: bool,
 };
 
 const SStatus = packed struct(u64) {
     __reserved1: u1,
-    supervisorInterruptEnable: bool,
+    supervisor_interrupt_enable: bool,
     __reserved2: u3,
-    supervisorPreviousInterruptEnable: bool,
-    userBigEndian: bool,
+    supervisor_previous_interrupt_enable: bool,
+    user_big_endian: bool,
     __reserved3: u1,
-    supervisorPreviousPrivilege: SPP,
-    vectorStatus: VectorStatus,
+    supervisor_previous_privilege: SPP,
+    vector_status: VectorStatus,
     __reserved4: u2,
-    floatStatus: FloatStatus,
-    extraExtensionStatus: ExtraExtensionStatus,
+    float_status: FloatStatus,
+    extra_extension_status: ExtraExtensionStatus,
     __reserved5: u1,
-    supervisorUserMemoryAccessable: bool,
-    executableMemoryReadable: bool,
+    supervisor_user_memory_accessable: bool,
+    executable_memory_read: bool,
     __reserved6: u12,
-    userXLen: XLength,
+    user_xlen: XLength,
     __reserved7: u29,
-    stateDirty: bool,
+    state_dirty: bool,
 
     const Self = @This();
 
     fn print(self: Self, logLevel: kio.LogLevel) void {
         kio.print(logLevel, "SIE={} SPIE={} SPP={s}", .{
-            self.supervisorInterruptEnable,
-            self.supervisorPreviousInterruptEnable,
-            @tagName(self.supervisorPreviousPrivilege),
+            self.supervisor_interrupt_enable,
+            self.supervisor_previous_interrupt_enable,
+            @tagName(self.supervisor_previous_privilege),
         });
 
         kio.print(logLevel, "VS={s} FS={s} XS={s} SD={}", .{
-            @tagName(self.vectorStatus),
-            @tagName(self.floatStatus),
-            @tagName(self.extraExtensionStatus),
-            self.stateDirty,
+            @tagName(self.vector_status),
+            @tagName(self.float_status),
+            @tagName(self.extra_extension_status),
+            self.state_dirty,
         });
 
         kio.print(logLevel, "SUM={} MXR={} UXL={} UBE={}", .{
-            self.supervisorUserMemoryAccessable,
-            self.executableMemoryReadable,
-            self.supervisorUserMemoryAccessable,
-            self.userBigEndian,
+            self.supervisor_user_memory_accessable,
+            self.executable_memory_read,
+            self.supervisor_user_memory_accessable,
+            self.user_big_endian,
         });
     }
 };
 
 pub fn enableInterrupts() void {
-    csr.sstatus.setBits(1 << @bitOffsetOf(SStatus, "supervisorInterruptEnable"));
+    csr.sstatus.setBits(1 << @bitOffsetOf(SStatus, "supervisor_interrupt_enable"));
 }
 
 pub fn disableInterrupts() void {
-    csr.sstatus.clearBits(1 << @bitOffsetOf(SStatus, "supervisorInterruptEnable"));
+    csr.sstatus.clearBits(1 << @bitOffsetOf(SStatus, "supervisor_interrupt_enable"));
 }
 
 pub fn enableInterrupt(id: usize) void {
@@ -286,24 +286,24 @@ fn genericExceptionHandler(code: ExceptionCode, pc: u64, status: SStatus, tval: 
 
 fn handleException(code: ExceptionCode, pc: u64, status: SStatus, tval: u64, frame: *TrapData) void {
     switch (code) {
-        .LoadPageFault, .InstructionPageFault, .StoreOrAMOPageFault => {
+        .load_page_fault, .instruction_page_fault, .store_or_amo_page_fault => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
             kio.err("Faulting address: 0x{x}", .{tval});
             @panic("Page fault");
         },
-        .EcallUMode => {
+        .ecall_u_mode => {
             @panic("TODO");
         },
-        .EcallSMode => {
+        .ecall_s_mode => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
             kio.err("Trap value: 0x{x}", .{tval});
             @panic("Environment call from S mode");
         },
-        .EcallMMode => {
+        .ecall_m_mode => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
@@ -317,40 +317,40 @@ fn handleException(code: ExceptionCode, pc: u64, status: SStatus, tval: u64, fra
 fn handleInterrupt(code: InterruptCode, pc: u64, status: SStatus, tval: u64, frame: *TrapData) void {
     _ = tval;
     switch (code) {
-        .SupervisorSoftwareInterrupt => {
+        .supervisor_software => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
             @panic("Supervisor software interrupt");
         },
-        .MachineSoftwareInterrupt => {
+        .machine_software => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
             @panic("Machine software interrupt");
         },
-        .SupervisorTimerInterrupt => {
+        .supervisor_timer => {
             timer.tick();
         },
-        .MachineTimerInterrupt => {
+        .machine_timer => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
             @panic("Machine timer interrupt");
         },
-        .SupervisorExternalInterrupt => {
+        .supervisor_external => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
             @panic("Supervisor external interrupt");
         },
-        .MachineExternalInterrupt => {
+        .machine_external => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
             @panic("Machine external interrupt");
         },
-        .CounterOverflowInterrupt => {
+        .counter_overflow => {
             status.print(.err);
             frame.printGPRs(.err);
             kio.err("PC=0x{x}", .{pc});
