@@ -6,6 +6,7 @@ const mm = @import("mem/mm.zig");
 const phys = @import("mem/phys.zig");
 const arch = @import("arch/arch.zig");
 const time = @import("time.zig");
+const uart = @import("drivers/uart.zig");
 
 export var deviceTreePointer: *void = undefined;
 
@@ -39,6 +40,8 @@ fn init() void {
     kio.log("Device tree address: 0x{x}", .{@intFromPtr(deviceTreePointer)});
     const dtRoot = dt.readDeviceTreeBlob(staticMemAllocator, deviceTreePointer) catch
         @panic("Failed to read device tree blob");
+
+    uart.init(&dtRoot) catch @panic("Failed to initialzie UART driver");
 
     const machine = dtRoot.node.getProperty("model") orelse @panic("Invalid device tree");
     kio.log("Machine model: {s}", .{machine});

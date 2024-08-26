@@ -366,3 +366,9 @@ pub fn getFrameRegions(allocator: std.mem.Allocator, dtRoot: *const dt.DeviceTre
 
     return usableRegions.toOwnedSlice();
 }
+
+const HHDMStart = 0xffffffc000000000;
+
+pub fn physicalToHHDMAddress(phys: PhysicalAddress) VirtualAddress {
+    return VirtualAddress.make(0xffffffc000000000 + phys.asInt());
+}

@@ -69,7 +69,7 @@ pub const Sv39PhysicalAddress = packed struct(u64) {
     }
 };
 
-pub const Sv39VirtualAddress = struct {
+pub const Sv39VirtualAddress = packed struct(u64) {
     offset: u12,
     pageNumber0: u9,
     pageNumber1: u9,
