@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const dt = @import("../devicetree.zig");
-const kio = @import("../kio.zig");
 const mm = @import("../mem/mm.zig");
 
 const ReceiverBufferRegisterOffset = 0;
@@ -131,7 +130,6 @@ pub fn init(dtRoot: *const dt.DeviceTreeRoot) !void {
 
     const serial = soc.getChild("serial@10000000") orelse
         return error.InvalidDeviceTree;
-    dt.printDeviceTree("/", serial, 0);
 
     const freq = serial.getPropertyU32("clock-frequency") orelse
         return error.InvalidDeviceTree;

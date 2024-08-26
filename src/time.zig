@@ -29,9 +29,10 @@ const Timer = struct {
         const frequency = try arch.clockSource.init(dtRoot);
         self.nsPerIncrement = NanosecondsPerSecond / frequency;
 
+        self.startCount = arch.clockSource.readCounter();
         self.initialized = true;
 
-        kio.log("Timer initialized frequency={}Hz, increments every {}ns", .{
+        kio.info("Timer initialized frequency={}Hz, increments every {}ns", .{
             frequency,
             self.nsPerIncrement,
         });

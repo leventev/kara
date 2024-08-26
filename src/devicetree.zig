@@ -137,11 +137,11 @@ pub fn printDeviceTree(path: []const u8, node: *const DeviceTreeNode, depth: usi
         buf[i] = ' ';
     }
 
-    kio.log("{s}{s}:", .{ buf[0..spaceCount], path });
+    kio.info("{s}{s}:", .{ buf[0..spaceCount], path });
 
     var prop_it = node.properties.iterator();
     while (prop_it.next()) |prop| {
-        kio.log("{s}{s} = {any}", .{ buf[0..spaceCount], prop.key_ptr.*, prop.value_ptr.* });
+        kio.info("{s}{s} = {any}", .{ buf[0..spaceCount], prop.key_ptr.*, prop.value_ptr.* });
     }
 
     var child_it = node.children.iterator();

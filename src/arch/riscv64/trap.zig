@@ -11,7 +11,7 @@ const TrapData = struct {
 
     const Self = @This();
 
-    fn printGPR(self: Self, writer: kio.KernelWriterType, idx: usize) !void {
+    fn printGPR(self: Self, writer: anytype, idx: usize) !void {
         std.debug.assert(idx < 32);
 
         const alternativeNames = [_][]const u8{
@@ -35,16 +35,22 @@ const TrapData = struct {
         try writer.print("0x{x:0>16}", .{self.gprs[idx]});
     }
 
-    fn printGPRs(self: Self, writer: kio.KernelWriterType) void {
+    fn printGPRs(self: Self, logLevel: kio.LogLevel) void {
         const totalRegs = 32;
         const regsPerLine = 4;
         const lines = totalRegs / regsPerLine;
+
+        var buff: [128]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buff);
+        var writer = stream.writer();
+
         for (0..lines) |i| {
             for (0..regsPerLine) |j| {
                 self.printGPR(writer, i * regsPerLine + j) catch unreachable;
                 writer.writeByte(' ') catch unreachable;
             }
-            writer.writeByte('\n') catch unreachable;
+            kio.print(logLevel, "{s}", .{stream.getWritten()});
+            stream.reset();
         }
     }
 };
@@ -224,26 +230,26 @@ const SStatus = packed struct(u64) {
 
     const Self = @This();
 
-    fn print(self: Self, writer: kio.KernelWriterType) void {
-        writer.print("SIE={} SPIE={} SPP={}\n", .{
+    fn print(self: Self, logLevel: kio.LogLevel) void {
+        kio.print(logLevel, "SIE={} SPIE={} SPP={s}", .{
             self.supervisorInterruptEnable,
             self.supervisorPreviousInterruptEnable,
-            self.supervisorPreviousPrivilege,
-        }) catch unreachable;
+            @tagName(self.supervisorPreviousPrivilege),
+        });
 
-        writer.print("VS={s} FS={s} XS={s} SD={}\n", .{
+        kio.print(logLevel, "VS={s} FS={s} XS={s} SD={}", .{
             @tagName(self.vectorStatus),
             @tagName(self.floatStatus),
             @tagName(self.extraExtensionStatus),
             self.stateDirty,
-        }) catch unreachable;
+        });
 
-        writer.print("SUM={} MXR={} UXL={} UBE={}\n", .{
+        kio.print(logLevel, "SUM={} MXR={} UXL={} UBE={}", .{
             self.supervisorUserMemoryAccessable,
             self.executableMemoryReadable,
             self.supervisorUserMemoryAccessable,
             self.userBigEndian,
-        }) catch unreachable;
+        });
     }
 };
 
@@ -271,37 +277,37 @@ pub fn clearPendingInterrupt(id: usize) void {
 }
 
 fn genericExceptionHandler(code: ExceptionCode, pc: u64, status: SStatus, tval: u64, frame: *TrapData) void {
-    status.print(kio.kernelWriter);
-    frame.printGPRs(kio.kernelWriter);
-    kio.log("PC=0x{x}", .{pc});
-    kio.log("Trap value: 0x{x}", .{tval});
+    status.print(.err);
+    frame.printGPRs(.err);
+    kio.err("PC=0x{x}", .{pc});
+    kio.err("Trap value: 0x{x}", .{tval});
     @panic(@tagName(code));
 }
 
 fn handleException(code: ExceptionCode, pc: u64, status: SStatus, tval: u64, frame: *TrapData) void {
     switch (code) {
         .LoadPageFault, .InstructionPageFault, .StoreOrAMOPageFault => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
-            kio.log("Faulting address: 0x{x}", .{tval});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
+            kio.err("Faulting address: 0x{x}", .{tval});
             @panic("Page fault");
         },
         .EcallUMode => {
             @panic("TODO");
         },
         .EcallSMode => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
-            kio.log("Trap value: 0x{x}", .{tval});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
+            kio.err("Trap value: 0x{x}", .{tval});
             @panic("Environment call from S mode");
         },
         .EcallMMode => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
-            kio.log("Trap value: 0x{x}", .{tval});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
+            kio.err("Trap value: 0x{x}", .{tval});
             @panic("Environment call from M mode");
         },
         else => genericExceptionHandler(code, pc, status, tval, frame),
@@ -312,42 +318,42 @@ fn handleInterrupt(code: InterruptCode, pc: u64, status: SStatus, tval: u64, fra
     _ = tval;
     switch (code) {
         .SupervisorSoftwareInterrupt => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
             @panic("Supervisor software interrupt");
         },
         .MachineSoftwareInterrupt => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
             @panic("Machine software interrupt");
         },
         .SupervisorTimerInterrupt => {
             timer.tick();
         },
         .MachineTimerInterrupt => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
             @panic("Machine timer interrupt");
         },
         .SupervisorExternalInterrupt => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
             @panic("Supervisor external interrupt");
         },
         .MachineExternalInterrupt => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
             @panic("Machine external interrupt");
         },
         .CounterOverflowInterrupt => {
-            status.print(kio.kernelWriter);
-            frame.printGPRs(kio.kernelWriter);
-            kio.log("PC=0x{x}", .{pc});
+            status.print(.err);
+            frame.printGPRs(.err);
+            kio.err("PC=0x{x}", .{pc});
             @panic("Counter overflow interrupt");
         },
     }

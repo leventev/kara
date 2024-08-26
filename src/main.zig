@@ -8,23 +8,23 @@ const arch = @import("arch/arch.zig");
 const time = @import("time.zig");
 const uart = @import("drivers/uart.zig");
 
-export var deviceTreePointer: *void = undefined;
+export var device_tree_pointer: *void = undefined;
 
-const temporaryHeapSize = 65535;
-var temporaryHeap: [temporaryHeapSize]u8 = undefined;
-var fba = std.heap.FixedBufferAllocator.init(&temporaryHeap);
-const staticMemAllocator = fba.allocator();
+const temp_heap_size = 65535;
+var temp_heap: [temp_heap_size]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&temp_heap);
+const static_mem_allocator = fba.allocator();
 
-pub fn panic(msg: []const u8, errorReturnTrace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = ret_addr;
-    _ = errorReturnTrace;
+    _ = error_return_trace;
 
-    kio.log("KERNEL PANIC: {s}", .{msg});
-    kio.log("Stack trace:", .{});
-    const firstTraceAddr = @returnAddress();
-    var it = std.debug.StackIterator.init(firstTraceAddr, null);
+    kio.err("KERNEL PANIC: {s}", .{msg});
+    kio.err("Stack trace:", .{});
+    const first_trace_addr = @returnAddress();
+    var it = std.debug.StackIterator.init(first_trace_addr, null);
     while (it.next()) |addr| {
-        kio.log("    0x{x}", .{addr});
+        kio.err("    0x{x}", .{addr});
     }
     while (true) {}
 }
@@ -37,32 +37,28 @@ export fn kmain() linksection(".init") void {
 }
 
 fn init() void {
-    kio.log("Device tree address: 0x{x}", .{@intFromPtr(deviceTreePointer)});
-    const dtRoot = dt.readDeviceTreeBlob(staticMemAllocator, deviceTreePointer) catch
+    kio.info("Device tree address: 0x{x}", .{@intFromPtr(device_tree_pointer)});
+    const dt_root = dt.readDeviceTreeBlob(static_mem_allocator, device_tree_pointer) catch
         @panic("Failed to read device tree blob");
 
-    uart.init(&dtRoot) catch @panic("Failed to initialzie UART driver");
+    uart.init(&dt_root) catch @panic("Failed to initialzie UART driver");
 
-    const machine = dtRoot.node.getProperty("model") orelse @panic("Invalid device tree");
-    kio.log("Machine model: {s}", .{machine});
+    const machine = dt_root.node.getProperty("model") orelse @panic("Invalid device tree");
+    kio.info("Machine model: {s}", .{machine});
 
-    const frameRegions = mm.getFrameRegions(staticMemAllocator, &dtRoot) catch
+    const frameRegions = mm.getFrameRegions(static_mem_allocator, &dt_root) catch
         @panic("Failed to initalize physical memory allocator");
 
-    phys.init(staticMemAllocator, frameRegions) catch
+    phys.init(static_mem_allocator, frameRegions) catch
         @panic("Failed to initialize physical frame allocator");
 
-    staticMemAllocator.free(frameRegions);
+    static_mem_allocator.free(frameRegions);
 
     arch.initInterrupts();
 
-    time.init(&dtRoot) catch @panic("Failed to initialize timer");
+    time.init(&dt_root) catch @panic("Failed to initialize timer");
 
     arch.enableInterrupts();
-
-    for (0..100_000) |i| {
-        kio.log("test {}", .{i});
-    }
 
     while (true) {
         asm volatile ("wfi");

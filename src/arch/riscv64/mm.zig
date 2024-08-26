@@ -232,13 +232,13 @@ pub fn setupPaging() void {
 
     writeSATP(satp);
 
-    kio.log("Virtual memory map:", .{});
-    kio.log("    Kernel: [0x{x:0>16}-0x{x:0>16}] ({} KiB)", .{
+    kio.info("Virtual memory map:", .{});
+    kio.info("    Kernel: [0x{x:0>16}-0x{x:0>16}] ({} KiB)", .{
         KernelRegionStart,
         KernelRegionEnd,
         KernelRegionSize / 1024,
     });
-    kio.log("      HHDM: [0x{x:0>16}-0x{x:0>16}] ({} KiB)", .{
+    kio.info("      HHDM: [0x{x:0>16}-0x{x:0>16}] ({} KiB)", .{
         DirectMappingStart,
         DirectMappingEnd,
         DirectMappingSize / 1024,

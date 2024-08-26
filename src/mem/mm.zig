@@ -251,7 +251,7 @@ fn addKernelReservedMemory(
     const kernelEnd = std.mem.alignForward(usize, @intFromPtr(&__kernel_end), 4096);
     const kernelSize = kernelEnd - kernelStart;
 
-    kio.log("Kernel code: {} KiB, rodata: {} KiB, data: {} KiB, bss: {} KiB, stack: {} KiB", .{
+    kio.info("Kernel code: {} KiB, rodata: {} KiB, data: {} KiB, bss: {} KiB, stack: {} KiB", .{
         textSize / 1024,
         rodataSize / 1024,
         dataSize / 1024,
@@ -294,11 +294,11 @@ fn addDeviceTreeReservedMemory(
 }
 
 fn printPhysicalRegions(physicalRegions: []const PhysicalMemoryRegion) void {
-    kio.log("Physical memory regions:", .{});
+    kio.info("Physical memory regions:", .{});
     for (physicalRegions) |reg| {
         const range = reg.range;
         const sizeInKiB = range.size / 1024;
-        kio.log(
+        kio.info(
             "    [0x{x:0>16}-0x{x:0>16}] ({} KiB)",
             .{ range.start, range.end() - 1, sizeInKiB },
         );
@@ -306,12 +306,12 @@ fn printPhysicalRegions(physicalRegions: []const PhysicalMemoryRegion) void {
 }
 
 fn printReservedRegions(reservedRegions: []const ReservedMemoryRegion) void {
-    kio.log("Reserved memory regions:", .{});
+    kio.info("Reserved memory regions:", .{});
     for (reservedRegions) |reg| {
         const range = reg.range;
         const sizeInKiB = range.size / 1024;
         if (reg.system) {
-            kio.log("    [0x{x:0>16}-0x{x:0>16}] <{s}> ({} KiB) system", .{
+            kio.info("    [0x{x:0>16}-0x{x:0>16}] <{s}> ({} KiB) system", .{
                 range.start,
                 range.end() - 1,
                 reg.name,
@@ -320,7 +320,7 @@ fn printReservedRegions(reservedRegions: []const ReservedMemoryRegion) void {
         } else {
             const noMapString = if (reg.noMap) "no-map" else "map";
             const reusableString = if (reg.reusable) "reusable" else "non-reusable";
-            kio.log("    [0x{x:0>16}-0x{x:0>16}] <{s}> ({} KiB) {s} {s}", .{
+            kio.info("    [0x{x:0>16}-0x{x:0>16}] <{s}> ({} KiB) {s} {s}", .{
                 range.start,
                 range.end() - 1,
                 reg.name,
@@ -333,10 +333,10 @@ fn printReservedRegions(reservedRegions: []const ReservedMemoryRegion) void {
 }
 
 fn printUsableRegions(regions: []const MemoryRegion) void {
-    kio.log("Usable memory regions:", .{});
+    kio.info("Usable memory regions:", .{});
     for (regions) |reg| {
         const sizeInKiB = reg.size / 1024;
-        kio.log(
+        kio.info(
             "    [0x{x:0>16}-0x{x:0>16}] ({} KiB)",
             .{ reg.start, reg.end() - 1, sizeInKiB },
         );

@@ -152,11 +152,11 @@ pub fn init(allocator: std.mem.Allocator, regions: []const mm.MemoryRegion) !voi
         .freeFrameCount = totalFrames,
     };
 
-    kio.log("Physical frame allocator initialized with {} frames ({} KiB) available", .{
+    kio.info("Physical frame allocator initialized with {} frames ({} KiB) available", .{
         totalFrames,
         totalFrames * 4,
     });
-    kio.log("{} bytes allocated for bitmaps", .{@sizeOf(LineType) * totalLines});
+    kio.info("{} bytes allocated for bitmaps", .{@sizeOf(LineType) * totalLines});
 }
 
 pub fn alloc() !mm.PhysicalAddress {

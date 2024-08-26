@@ -14,7 +14,7 @@ pub const initInterrupts = trap.init;
 pub const clockSource = timer.riscvClockSource;
 
 pub fn init() linksection(".init") void {
-    kio.log("Starting kara(riscv64)...", .{});
+    kio.info("Starting kara(riscv64)...", .{});
     const sbiVersion = sbi.getSpecificationVersion();
     const sbiVersionMajor = sbiVersion >> 24;
     const sbiVersionMinor = sbiVersion & 0x00FFFFFF;
@@ -25,8 +25,8 @@ pub fn init() linksection(".init") void {
         "Unknown";
     const sbiImplementationVersion = sbi.getImplementationVersion();
 
-    kio.log("SBI specification version: {}.{}", .{ sbiVersionMajor, sbiVersionMinor });
-    kio.log("SBI implementation: {s} (ID={x}) version: 0x{x}", .{ sbiImplementation, sbiImplementationID, sbiImplementationVersion });
+    kio.info("SBI specification version: {}.{}", .{ sbiVersionMajor, sbiVersionMinor });
+    kio.info("SBI implementation: {s} (ID={x}) version: 0x{x}", .{ sbiImplementation, sbiImplementationID, sbiImplementationVersion });
 
     mm.setupPaging();
 }

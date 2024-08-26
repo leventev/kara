@@ -1,13 +1,26 @@
-const fmt = @import("std").fmt;
-const Writer = @import("std").io.GenericWriter;
-const Reader = @import("std").io.GenericReader;
+const std = @import("std");
 
 const sbi = @import("arch/riscv64/sbi.zig");
 const uart = @import("drivers/uart.zig");
 const time = @import("time.zig");
 
-pub const KernelWriterType = Writer(void, error{}, writeBytes);
-pub const kernelWriter = KernelWriterType{ .context = {} };
+pub const KernelWriterType = std.io.GenericWriter(void, error{}, writeBytes);
+pub const kernel_writer = KernelWriterType{ .context = {} };
+
+const kio_cfg: std.io.tty.Config = .escape_codes;
+
+fn printTimeAndLogLevel(level: LogLevel) !void {
+    const ns = time.nanoseconds() orelse 0;
+    const sec = ns / time.NanosecondsPerSecond;
+    const rem = ns % (10 * time.NanosecondsPerMicroseconds);
+
+    try std.fmt.format(kernel_writer, "{}.{:0>5} ", .{ sec, rem });
+
+    try kio_cfg.setColor(kernel_writer, std.io.tty.Color.bold);
+    try kio_cfg.setColor(kernel_writer, level.color());
+    _ = try kernel_writer.write(@tagName(level) ++ " ");
+    try kio_cfg.setColor(kernel_writer, std.io.tty.Color.reset);
+}
 
 fn writeBytes(_: void, bytes: []const u8) error{}!usize {
     if (uart.initialized) {
@@ -15,14 +28,46 @@ fn writeBytes(_: void, bytes: []const u8) error{}!usize {
     } else {
         sbi.debugConsoleWrite(bytes) catch unreachable;
     }
+
     return bytes.len;
 }
 
-pub fn log(comptime format: []const u8, args: anytype) void {
-    const ns = time.nanoseconds() orelse 0;
-    const sec = ns / time.NanosecondsPerSecond;
-    const rem = ns / (10 * time.NanosecondsPerMicroseconds);
-    fmt.format(kernelWriter, "[{: >5}.{:0>4}] ", .{ sec, rem }) catch unreachable;
-    fmt.format(kernelWriter, format, args) catch unreachable;
-    kernelWriter.writeByte('\n') catch unreachable;
+pub const LogLevel = enum(comptime_int) {
+    info,
+    debug,
+    warn,
+    err,
+
+    const Self = @This();
+
+    fn color(self: Self) std.io.tty.Color {
+        return switch (self) {
+            .info => .blue,
+            .debug => .magenta,
+            .warn => .yellow,
+            .err => .red,
+        };
+    }
+};
+
+pub fn print(level: LogLevel, comptime format: []const u8, args: anytype) void {
+    printTimeAndLogLevel(level) catch unreachable;
+    std.fmt.format(kernel_writer, format, args) catch unreachable;
+    kernel_writer.writeByte('\n') catch unreachable;
+}
+
+pub fn debug(comptime format: []const u8, args: anytype) void {
+    print(.debug, format, args);
+}
+
+pub fn info(comptime format: []const u8, args: anytype) void {
+    print(.info, format, args);
+}
+
+pub fn warn(comptime format: []const u8, args: anytype) void {
+    print(.warn, format, args);
+}
+
+pub fn err(comptime format: []const u8, args: anytype) void {
+    print(.err, format, args);
 }
