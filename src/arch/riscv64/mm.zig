@@ -202,10 +202,10 @@ pub fn setupPaging() void {
 
     // map 128GiB directly
     for (256..256 + 128, 0..) |i, j| {
-        const physAddr = Sv39PhysicalAddress.make(j * (1024 * 1024 * 1024));
+        const phys_addr = Sv39PhysicalAddress.make(j * (1024 * 1024 * 1024));
         page_table.writeEntry(
             i,
-            physAddr,
+            phys_addr,
             PageEntryType.leaf1G,
             PageTableEntry.Flags{
                 .executable = false,

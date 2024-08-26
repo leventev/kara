@@ -11,7 +11,7 @@ pub const ns_per_tick = 1_000_000;
 pub const ClockSourceInitError = error{InvalidDeviceTree};
 
 pub const ClockSource = struct {
-    init: *const fn (dtRoot: *const dt.DeviceTreeRoot) ClockSourceInitError!u64,
+    init: *const fn (dt_root: *const dt.DeviceTreeRoot) ClockSourceInitError!u64,
     enable: *const fn () void,
     disable: *const fn () void,
     readCounter: *const fn () u64,
@@ -25,8 +25,8 @@ const Timer = struct {
 
     const Self = @This();
 
-    fn init(self: *Self, dtRoot: *const dt.DeviceTreeRoot) !void {
-        const frequency = try arch.clock_source.init(dtRoot);
+    fn init(self: *Self, dt_root: *const dt.DeviceTreeRoot) !void {
+        const frequency = try arch.clock_source.init(dt_root);
         self.ns_per_increment = ns_per_second / frequency;
 
         self.start_count = arch.clock_source.readCounter();
@@ -62,8 +62,8 @@ pub fn nanoseconds() ?u64 {
     return (current - timer.start_count) * timer.ns_per_increment;
 }
 
-pub fn init(dtRoot: *const dt.DeviceTreeRoot) !void {
+pub fn init(dt_root: *const dt.DeviceTreeRoot) !void {
     std.debug.assert(!timer.initialized);
-    try timer.init(dtRoot);
+    try timer.init(dt_root);
     enable();
 }

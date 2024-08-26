@@ -23,10 +23,10 @@ pub fn init() linksection(".init") void {
         sbi.sbi_implementations[sbi_impl_id]
     else
         "Unknown";
-    const sbiImplementationVersion = sbi.getImplementationVersion();
+    const sbi_implementation_version = sbi.getImplementationVersion();
 
     kio.info("SBI specification version: {}.{}", .{ sbi_version_major, sbi_version_minor });
-    kio.info("SBI implementation: {s} (ID={x}) version: 0x{x}", .{ sbi_impl_str, sbi_impl_id, sbiImplementationVersion });
+    kio.info("SBI implementation: {s} (ID={x}) version: 0x{x}", .{ sbi_impl_str, sbi_impl_id, sbi_implementation_version });
 
     mm.setupPaging();
 }

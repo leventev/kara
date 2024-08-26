@@ -223,9 +223,8 @@ fn getUsableRegions(
 
 fn addKernelReservedMemory(
     allocator: std.mem.Allocator,
-    reserved_regins: *std.ArrayListUnmanaged(ReservedMemoryRegion),
+    reserved_regions: *std.ArrayListUnmanaged(ReservedMemoryRegion),
 ) !void {
-
     // we can(have to) align forward the end address of the segments because the next segment should be at the next possible 4K aligned address
     const text_start = @intFromPtr(&__text_start);
     const text_end = @intFromPtr(&__text_end);
@@ -260,7 +259,7 @@ fn addKernelReservedMemory(
         stack_size / 1024,
     });
 
-    try reserved_regins.append(allocator, ReservedMemoryRegion{
+    try reserved_regions.append(allocator, ReservedMemoryRegion{
         .name = "kernel",
         .no_map = true,
         .reusable = false,
@@ -275,11 +274,11 @@ fn addKernelReservedMemory(
 fn addDeviceTreeReservedMemory(
     allocator: std.mem.Allocator,
     reserved_regions: *std.ArrayListUnmanaged(ReservedMemoryRegion),
-    dtRoot: *const dt.DeviceTreeRoot,
+    dt_root: *const dt.DeviceTreeRoot,
 ) !void {
     // we need to reserve memory for the DT itself
-    const dt_start = std.mem.alignBackward(u64, @intCast(dtRoot.addr), 4096);
-    const dt_end = std.mem.alignForward(u64, @intCast(dtRoot.addr + dtRoot.size), 4096);
+    const dt_start = std.mem.alignBackward(u64, @intCast(dt_root.addr), 4096);
+    const dt_end = std.mem.alignForward(u64, @intCast(dt_root.addr + dt_root.size), 4096);
 
     const dt_region = ReservedMemoryRegion{
         .name = "device-tree",

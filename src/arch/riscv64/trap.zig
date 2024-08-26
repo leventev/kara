@@ -65,8 +65,8 @@ const TrapVectorBaseAddr = packed struct(u64) {
     base: u62,
 
     const Mode = enum(u2) {
-        Direct = 0,
-        Vectored = 1,
+        direct = 0,
+        vectored = 1,
     };
     // 0x80200228
     fn make(addr: u64, mode: Mode) TrapVectorBaseAddr {
@@ -376,7 +376,7 @@ export fn handleTrap(
 pub fn init() void {
     const stvec = TrapVectorBaseAddr.make(
         @intFromPtr(&trapHandlerSupervisor),
-        TrapVectorBaseAddr.Mode.Direct,
+        TrapVectorBaseAddr.Mode.direct,
     );
 
     csr.stvec.write(@bitCast(stvec));

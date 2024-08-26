@@ -124,8 +124,8 @@ pub fn writeBytes(buf: []const u8) void {
 
 pub var initialized = false;
 
-pub fn init(dtRoot: *const dt.DeviceTreeRoot) !void {
-    const soc = dtRoot.node.getChild("soc") orelse
+pub fn init(dt_root: *const dt.DeviceTreeRoot) !void {
+    const soc = dt_root.node.getChild("soc") orelse
         return error.InvalidDeviceTree;
 
     const serial = soc.getChild("serial@10000000") orelse
