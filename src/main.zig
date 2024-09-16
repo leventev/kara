@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const kio = @import("kio.zig");
-const dt = @import("devicetree.zig");
+const devicetree = @import("devicetree.zig");
 const mm = @import("mem/mm.zig");
 const phys = @import("mem/phys.zig");
 const arch = @import("arch/arch.zig");
@@ -38,16 +38,16 @@ export fn kmain() linksection(".init") void {
 
 fn init() void {
     kio.info("Device tree address: 0x{x}", .{@intFromPtr(device_tree_pointer)});
-    const dt_root = dt.readDeviceTreeBlob(static_mem_allocator, device_tree_pointer) catch
+    const dt = devicetree.readDeviceTreeBlob(static_mem_allocator, device_tree_pointer) catch
         @panic("Failed to read device tree blob");
 
-    uart.init(&dt_root) catch @panic("Failed to initialzie UART driver");
+    uart.init(&dt) catch @panic("Failed to initialzie UART driver");
 
-    const machine = dt_root.node.getProperty("model") orelse @panic("Invalid device tree");
+    const machine = dt.root().getProperty(.model) orelse @panic("Invalid device tree");
     kio.info("Machine model: {s}", .{machine});
 
-    const frame_regions = mm.getFrameRegions(static_mem_allocator, &dt_root) catch
-        @panic("Failed to initalize physical memory allocator");
+    const frame_regions = mm.getFrameRegions(static_mem_allocator, &dt) catch
+        @panic("Failed to get physical memory regions");
 
     phys.init(static_mem_allocator, frame_regions) catch
         @panic("Failed to initialize physical frame allocator");
@@ -56,7 +56,7 @@ fn init() void {
 
     arch.initInterrupts();
 
-    time.init(&dt_root) catch @panic("Failed to initialize timer");
+    time.init(&dt) catch @panic("Failed to initialize timer");
 
     arch.enableInterrupts();
 

@@ -1,5 +1,5 @@
 const time = @import("../../time.zig");
-const dt = @import("../../devicetree.zig");
+const devicetree = @import("../../devicetree.zig");
 const csr = @import("csr.zig").CSR;
 const sbi = @import("sbi.zig");
 const trap = @import("trap.zig");
@@ -14,10 +14,10 @@ pub const riscv_clock_source = time.ClockSource{
 // only written once
 var counter_cmp: u64 = undefined;
 
-fn init(dt_root: *const dt.DeviceTreeRoot) time.ClockSourceInitError!u64 {
-    const cpus = dt_root.node.getChild("cpus") orelse
+fn init(dt: *const devicetree.DeviceTree) time.ClockSourceInitError!u64 {
+    const cpus = dt.getChild(dt.root(), "cpus") orelse
         return error.InvalidDeviceTree;
-    const frequency = cpus.getPropertyU32("timebase-frequency") orelse
+    const frequency = cpus.getProperty(.timebase_frequency) orelse
         return error.InvalidDeviceTree;
 
     const ns_per_increment = time.ns_per_second / frequency;

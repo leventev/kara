@@ -1,7 +1,7 @@
 // https://uart16550.readthedocs.io/_/downloads/en/latest/pdf/
 
 const std = @import("std");
-const dt = @import("../devicetree.zig");
+const devicetree = @import("../devicetree.zig");
 const mm = @import("../mem/mm.zig");
 
 const receiver_buffer_offset = 0;
@@ -124,22 +124,25 @@ pub fn writeBytes(buf: []const u8) void {
 
 pub var initialized = false;
 
-pub fn init(dt_root: *const dt.DeviceTreeRoot) !void {
-    const soc = dt_root.node.getChild("soc") orelse
+pub fn init(dt: *const devicetree.DeviceTree) !void {
+    const soc = dt.getChild(dt.root(), "soc") orelse
         return error.InvalidDeviceTree;
 
-    const serial = soc.getChild("serial@10000000") orelse
+    const serial = dt.getChild(soc, "serial@10000000") orelse
         return error.InvalidDeviceTree;
 
-    const freq = serial.getPropertyU32("clock-frequency") orelse
+    const freq = serial.getProperty(.clock_frequency) orelse
         return error.InvalidDeviceTree;
     _ = freq;
 
-    const regs = serial.getProperty("reg") orelse
+    const regs = serial.getProperty(.reg) orelse
         return error.InvalidDeviceTree;
 
+    // TODO: get address cells from parent
+    var regs_it = try regs.iterator(2, 0);
+
     // TODO: parse all provided addresses? and based on the provided cell sizes
-    const baseAddr = std.mem.readInt(u64, regs[0..8], .big);
+    const baseAddr = (regs_it.next() orelse return error.InvalidDeviceTree).addr;
     const physAddr = mm.PhysicalAddress.make(baseAddr);
     const virtAddr = mm.physicalToHHDMAddress(physAddr);
     base_ptr = @ptrFromInt(virtAddr.asInt());

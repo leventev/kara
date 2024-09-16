@@ -1,6 +1,6 @@
 const std = @import("std");
 const kio = @import("../kio.zig");
-const dt = @import("../devicetree.zig");
+const devicetree = @import("../devicetree.zig");
 const arch = @import("../arch/arch.zig");
 
 const bigToNative = std.mem.bigToNative;
@@ -58,19 +58,6 @@ const ReservedMemoryRegion = struct {
     // TODO: support dynamic reservations too
 };
 
-fn calculateEntrySize(node: *const dt.DeviceTreeNode) !usize {
-    const address_cells = node.getPropertyU32("#address-cells") orelse return error.InvalidDeviceTree;
-    const size_cells = node.getPropertyU32("#size-cells") orelse return error.InvalidDeviceTree;
-
-    const expected_cells = @sizeOf(u64) / @sizeOf(u32);
-    if (address_cells != expected_cells or size_cells != expected_cells) {
-        return error.UnexpectedCellCount;
-    }
-
-    const cells_per_entry = address_cells + size_cells;
-    return cells_per_entry * @sizeOf(u32);
-}
-
 fn readMemoryPair(buff: []const u8, idx: usize, entrySize: usize) MemoryRegion {
     const entry_base = idx * entrySize;
     const entry = buff[entry_base .. entry_base + entrySize];
@@ -83,29 +70,29 @@ fn readMemoryPair(buff: []const u8, idx: usize, entrySize: usize) MemoryRegion {
 
 fn parseMemoryRegions(
     allocator: std.mem.Allocator,
-    dt_root: *const dt.DeviceTreeNode,
+    dt: *const devicetree.DeviceTree,
+    root: *const devicetree.DeviceTreeNode,
 ) !std.ArrayListUnmanaged(PhysicalMemoryRegion) {
-    const entry_size = try calculateEntrySize(dt_root);
-
     var regions = std.ArrayListUnmanaged(PhysicalMemoryRegion){};
 
-    var iter = dt_root.children.iterator();
-    while (iter.next()) |child| {
-        if (!std.mem.startsWith(u8, child.key_ptr.*, "memory"))
+    for (root.children.items) |child| {
+        if (!std.mem.startsWith(u8, child.name, "memory"))
             continue;
 
-        var device_type = child.value_ptr.getProperty("device_type") orelse return error.InvalidDeviceTree;
+        const node = dt.nodes.items[child.handle];
 
-        // cut off null terminator
-        device_type = device_type[0 .. device_type.len - 1];
-        if (!std.mem.eql(u8, device_type, "memory")) return error.InvalidDeviceTree;
+        const reg = node.getProperty(.reg) orelse return error.InvalidDeviceTree;
+        const address_cells = node.getAddressCellFromParent(dt) orelse return error.InvalidDeviceTree;
+        const size_cells = node.getSizeCellFromParent(dt) orelse return error.InvalidDeviceTree;
+        var it = reg.iterator(address_cells, size_cells) catch return error.InvalidDeviceTree;
 
-        const reg = child.value_ptr.getProperty("reg") orelse return error.InvalidDeviceTree;
-        const entry_count = reg.len / entry_size;
-
-        for (0..entry_count) |i| {
-            const entry = readMemoryPair(reg, i, entry_size);
-            try regions.append(allocator, PhysicalMemoryRegion{ .range = entry });
+        while (it.next()) |regpair| {
+            try regions.append(allocator, PhysicalMemoryRegion{
+                .range = .{
+                    .start = regpair.addr,
+                    .size = regpair.size,
+                },
+            });
         }
     }
 
@@ -114,30 +101,31 @@ fn parseMemoryRegions(
 
 fn parseReservedMemoryRegions(
     allocator: std.mem.Allocator,
-    dt_root: *const dt.DeviceTreeNode,
+    dt: *const devicetree.DeviceTree,
+    root: *const devicetree.DeviceTreeNode,
 ) !std.ArrayListUnmanaged(ReservedMemoryRegion) {
-    const reserved_memory = dt_root.getChild("reserved-memory") orelse return error.InvalidDeviceTree;
-
-    const entry_size = try calculateEntrySize(reserved_memory);
+    const reserved_memory = dt.getChild(root, "reserved-memory") orelse return error.InvalidDeviceTree;
 
     var regions = std.ArrayListUnmanaged(ReservedMemoryRegion){};
 
-    var iter = reserved_memory.children.iterator();
-    while (iter.next()) |region| {
-        const node = region.value_ptr;
+    for (reserved_memory.children.items) |region| {
+        const node = dt.nodes.items[region.handle];
 
-        const no_map = node.getProperty("no-map") != null;
-        const reusable = node.getProperty("reusable") != null;
+        const no_map = node.getPropertyOther("no-map") != null;
+        const reusable = node.getPropertyOther("reusable") != null;
 
-        const reg = region.value_ptr.getProperty("reg") orelse continue;
-        const entry_count = reg.len / entry_size;
+        const reg = node.getProperty(.reg) orelse continue;
+        const address_cells = node.getAddressCellFromParent(dt) orelse return error.InvalidDeviceTree;
+        const size_cells = node.getSizeCellFromParent(dt) orelse return error.InvalidDeviceTree;
+        var it = reg.iterator(address_cells, size_cells) catch return error.InvalidDeviceTree;
 
-        for (0..entry_count) |i| {
-            const entry = readMemoryPair(reg, i, entry_size);
-
+        while (it.next()) |regpair| {
             try regions.append(allocator, ReservedMemoryRegion{
-                .range = entry,
-                .name = region.key_ptr.*,
+                .range = .{
+                    .start = regpair.addr,
+                    .size = regpair.size,
+                },
+                .name = region.name,
                 .no_map = no_map,
                 .reusable = reusable,
                 .system = false,
@@ -274,11 +262,11 @@ fn addKernelReservedMemory(
 fn addDeviceTreeReservedMemory(
     allocator: std.mem.Allocator,
     reserved_regions: *std.ArrayListUnmanaged(ReservedMemoryRegion),
-    dt_root: *const dt.DeviceTreeRoot,
+    dt: *const devicetree.DeviceTree,
 ) !void {
     // we need to reserve memory for the DT itself
-    const dt_start = std.mem.alignBackward(u64, @intCast(dt_root.addr), 4096);
-    const dt_end = std.mem.alignForward(u64, @intCast(dt_root.addr + dt_root.size), 4096);
+    const dt_start = std.mem.alignBackward(u64, @intFromPtr(dt.blob.ptr), 4096);
+    const dt_end = std.mem.alignForward(u64, @intCast(@intFromPtr(dt.blob.ptr) + dt.blob.len), 4096);
 
     const dt_region = ReservedMemoryRegion{
         .name = "device-tree",
@@ -343,14 +331,14 @@ fn printUsableRegions(regions: []const MemoryRegion) void {
     }
 }
 
-pub fn getFrameRegions(allocator: std.mem.Allocator, dt_root: *const dt.DeviceTreeRoot) ![]const MemoryRegion {
-    var phyiscal_regions = try parseMemoryRegions(allocator, &dt_root.node);
+pub fn getFrameRegions(allocator: std.mem.Allocator, dt: *const devicetree.DeviceTree) ![]const MemoryRegion {
+    var phyiscal_regions = try parseMemoryRegions(allocator, dt, dt.root());
     defer phyiscal_regions.deinit(allocator);
 
-    var reserved_regions = try parseReservedMemoryRegions(allocator, &dt_root.node);
+    var reserved_regions = try parseReservedMemoryRegions(allocator, dt, dt.root());
     defer reserved_regions.deinit(allocator);
 
-    try addDeviceTreeReservedMemory(allocator, &reserved_regions, dt_root);
+    try addDeviceTreeReservedMemory(allocator, &reserved_regions, dt);
     try addKernelReservedMemory(allocator, &reserved_regions);
 
     printPhysicalRegions(phyiscal_regions.items);

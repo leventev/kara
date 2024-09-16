@@ -28,11 +28,13 @@ const TokenType = enum(u32) {
 
 const device_tree_blob_magic = 0xD00DFEED;
 
+const no_parent = std.math.maxInt(u32);
+
 const bigToNative = std.mem.bigToNative;
 
-fn getString(blob: [*]u32, offset: u32) [*:0]const u8 {
+fn getString(blob: []const u32, offset: u32) [*:0]const u8 {
     const string_block_offset = bigToNative(u32, blob[dt_strings_offset_idx]);
-    const string_block_start = @as([*]u8, @ptrCast(blob)) + @as(usize, string_block_offset);
+    const string_block_start = @as([*]const u8, @ptrCast(blob.ptr)) + @as(usize, string_block_offset);
     return @ptrCast(string_block_start + @as(usize, offset));
 }
 
@@ -48,53 +50,282 @@ fn readBeginNode(ptr: [*]u32) []const u8 {
 }
 
 pub const DeviceTreeNode = struct {
-    properties: std.StringArrayHashMapUnmanaged([]const u8),
-    children: std.StringArrayHashMapUnmanaged(DeviceTreeNode),
+    properties: std.ArrayListUnmanaged(Property),
+    children: std.ArrayListUnmanaged(Child),
+    parent_handle: u32,
+
+    const PropertyType = enum {
+        compatible,
+        model,
+        phandle,
+        status,
+        address_cells,
+        size_cells,
+        reg,
+        virtual_reg,
+        ranges,
+        dma_ranges,
+        dma_coherent,
+        dma_noncoherent,
+        interrupts,
+        interrupt_parent,
+        interrupts_extended,
+        interrupt_cells,
+        interrupt_controller,
+        interrupt_map,
+        interrupt_map_mask,
+        clock_frequency,
+        timebase_frequency,
+        other,
+    };
+
+    const Property = union(PropertyType) {
+        compatible: []const u8,
+        model: []const u8,
+        phandle: u32,
+        status: []const u8,
+        address_cells: u32,
+        size_cells: u32,
+        reg: Reg,
+        virtual_reg: Reg,
+        ranges: []const u8, // TODO
+        dma_ranges: []const u8, // TODO
+        dma_coherent: void,
+        dma_noncoherent: void,
+        interrupts: []const u8, // TODO
+        interrupt_parent: []const u8, // TODO
+        interrupts_extended: []const u8, // TODO
+        interrupt_cells: u32,
+        interrupt_controller: void,
+        interrupt_map: []const u8, // TODO
+        interrupt_map_mask: []const u8, // TODO
+        clock_frequency: u64,
+        timebase_frequency: u64,
+        other: struct {
+            name: []const u8,
+            value: []const u8,
+        },
+
+        pub const Reg = struct {
+            buff: []const u8,
+
+            pub fn iterator(self: Reg, address_cells: u32, size_cells: u32) !Iterator {
+                const entry_size = address_cells + size_cells;
+                const rem = std.math.mod(usize, self.buff.len, entry_size) catch
+                    return error.InvalidCellCounts;
+                if (rem != 0)
+                    return error.InvalidCellCounts;
+
+                return .{
+                    .buff = self.buff,
+                    .address_cells = address_cells,
+                    .size_cells = size_cells,
+                    .idx = 0,
+                };
+            }
+
+            pub const Iterator = struct {
+                buff: []const u8,
+                address_cells: u32,
+                size_cells: u32,
+                idx: u32,
+
+                pub fn next(self: *Iterator) ?RegPair {
+                    if (self.idx == self.buff.len) return null;
+
+                    const addr: u64 = switch (self.address_cells) {
+                        1 => std.mem.readInt(u32, @ptrCast(&self.buff[self.idx]), .big),
+                        2 => std.mem.readInt(u64, @ptrCast(&self.buff[self.idx]), .big),
+                        else => @panic("unsupported cell size"),
+                    };
+
+                    self.idx += @sizeOf(u32) * self.address_cells;
+
+                    const size: u64 = switch (self.size_cells) {
+                        0 => 0,
+                        1 => std.mem.readInt(u32, @ptrCast(&self.buff[self.idx]), .big),
+                        2 => std.mem.readInt(u64, @ptrCast(&self.buff[self.idx]), .big),
+                        else => @panic("unsupported cell size"),
+                    };
+
+                    self.idx += @sizeOf(u32) * self.size_cells;
+
+                    return .{
+                        .addr = addr,
+                        .size = size,
+                    };
+                }
+            };
+
+            const RegPair = struct {
+                addr: u64,
+                size: u64,
+            };
+        };
+    };
+
+    const Child = struct {
+        name: []const u8,
+        handle: u32,
+    };
 
     const Self = @This();
 
-    pub fn getProperty(self: Self, name: []const u8) ?[]const u8 {
-        return self.properties.get(name);
+    fn PropReturnType(comptime prop_type: PropertyType) type {
+        const typeInfo = @typeInfo(Property);
+        const fields = typeInfo.Union.fields;
+        for (fields) |field| {
+            if (std.mem.eql(u8, field.name, @tagName(prop_type))) {
+                return field.type;
+            }
+        }
     }
 
-    pub fn getPropertyU32(self: Self, name: []const u8) ?u32 {
-        const prop = self.getProperty(name) orelse return null;
-        if (prop.len != @sizeOf(u32))
-            return null;
-
-        const u32Ptr: *const u32 = @ptrCast(@alignCast(prop.ptr));
-        return bigToNative(u32, u32Ptr.*);
+    pub fn getProperty(self: Self, comptime prop_type: PropertyType) ?PropReturnType(prop_type) {
+        for (self.properties.items) |prop| {
+            switch (prop) {
+                prop_type => |val| return val,
+                else => continue,
+            }
+        }
+        return null;
     }
 
-    pub fn getChild(self: Self, name: []const u8) ?*const DeviceTreeNode {
-        return self.children.getPtr(name);
+    pub fn getPropertyOther(self: Self, name: []const u8) ?[]const u8 {
+        for (self.properties.items) |prop| {
+            switch (prop) {
+                .other => |inner| {
+                    if (std.mem.eql(u8, inner.name, name))
+                        return inner.value;
+                },
+                else => continue,
+            }
+        }
+
+        return null;
+    }
+
+    pub fn getAddressCellFromParent(self: DeviceTreeNode, dt: *const DeviceTree) ?u32 {
+        if (self.parent_handle == no_parent) return null;
+
+        const parent = &dt.nodes.items[self.parent_handle];
+        return parent.getProperty(.address_cells) orelse
+            parent.getAddressCellFromParent(dt);
+    }
+
+    pub fn getSizeCellFromParent(self: DeviceTreeNode, dt: *const DeviceTree) ?u32 {
+        if (self.parent_handle == no_parent) return null;
+
+        const parent = &dt.nodes.items[self.parent_handle];
+        return parent.getProperty(.address_cells) orelse
+            parent.getSizeCellFromParent(dt);
     }
 };
 
-const NodeProperty = struct { name: []const u8, value: []const u8 };
-fn readProperty(blob: [*]u32, ptr: [*]u32) NodeProperty {
+pub const DeviceTree = struct {
+    /// list of nodes, 0 should be the root node
+    nodes: std.ArrayListUnmanaged(DeviceTreeNode),
+
+    blob: []const u32,
+
+    const Self = @This();
+
+    pub fn root(self: Self) *const DeviceTreeNode {
+        std.debug.assert(self.nodes.items.len > 0);
+        return &self.nodes.items[0];
+    }
+
+    pub fn getChild(self: Self, node: *const DeviceTreeNode, name: []const u8) ?*const DeviceTreeNode {
+        for (node.children.items) |child|
+            if (std.mem.eql(u8, child.name, name))
+                return &self.nodes.items[child.handle];
+        return null;
+    }
+};
+
+const PropertyRead = struct { prop: DeviceTreeNode.Property, len: usize };
+fn readProperty(blob: []const u32, ptr: [*]u32) PropertyRead {
     const value_len = bigToNative(u32, ptr[prop_value_len_idx]);
     const name_offset = bigToNative(u32, ptr[prop_name_offset_idx]);
 
     const name = getString(blob, name_offset);
     const value = @as([*]const u8, @ptrCast(&ptr[prop_value_idx]))[0..value_len];
+    const name_slice = std.mem.span(name);
 
-    return NodeProperty{
-        .name = std.mem.span(name),
-        .value = value,
-    };
+    var prop: DeviceTreeNode.Property = undefined;
+
+    if (std.mem.eql(u8, name_slice, "compatible")) {
+        prop = DeviceTreeNode.Property{ .compatible = value };
+    } else if (std.mem.eql(u8, name_slice, "model")) {
+        prop = DeviceTreeNode.Property{ .model = value };
+    } else if (std.mem.eql(u8, name_slice, "phandle")) {
+        prop = DeviceTreeNode.Property{ .phandle = std.mem.readInt(u32, value[0..4], .big) };
+    } else if (std.mem.eql(u8, name_slice, "status")) {
+        prop = DeviceTreeNode.Property{ .status = value };
+    } else if (std.mem.eql(u8, name_slice, "#address-cells")) {
+        prop = DeviceTreeNode.Property{ .address_cells = std.mem.readInt(u32, value[0..4], .big) };
+    } else if (std.mem.eql(u8, name_slice, "#size-cells")) {
+        prop = DeviceTreeNode.Property{ .size_cells = std.mem.readInt(u32, value[0..4], .big) };
+    } else if (std.mem.eql(u8, name_slice, "reg")) {
+        prop = DeviceTreeNode.Property{ .reg = .{ .buff = value } };
+    } else if (std.mem.eql(u8, name_slice, "virtual-reg")) {
+        prop = DeviceTreeNode.Property{ .other = .{ .name = name_slice, .value = value } };
+    } else if (std.mem.eql(u8, name_slice, "ranges")) {
+        prop = DeviceTreeNode.Property{ .ranges = value };
+    } else if (std.mem.eql(u8, name_slice, "dma-ranges")) {
+        prop = DeviceTreeNode.Property{ .dma_ranges = value };
+    } else if (std.mem.eql(u8, name_slice, "dma-coherent")) {
+        prop = DeviceTreeNode.Property{ .dma_coherent = {} };
+    } else if (std.mem.eql(u8, name_slice, "dma-noncoherent")) {
+        prop = DeviceTreeNode.Property{ .dma_noncoherent = {} };
+    } else if (std.mem.eql(u8, name_slice, "interrupts")) {
+        prop = DeviceTreeNode.Property{ .interrupts = value };
+    } else if (std.mem.eql(u8, name_slice, "interrupt-parent")) {
+        prop = DeviceTreeNode.Property{ .interrupt_parent = value };
+    } else if (std.mem.eql(u8, name_slice, "interrupts-extended")) {
+        prop = DeviceTreeNode.Property{ .interrupts_extended = value };
+    } else if (std.mem.eql(u8, name_slice, "interrupt-cells")) {
+        prop = DeviceTreeNode.Property{ .interrupt_cells = std.mem.readInt(u32, value[0..4], .big) };
+    } else if (std.mem.eql(u8, name_slice, "interrupt-controller")) {
+        prop = DeviceTreeNode.Property{ .interrupt_controller = {} };
+    } else if (std.mem.eql(u8, name_slice, "interrupt-map")) {
+        prop = DeviceTreeNode.Property{ .interrupt_map = value };
+    } else if (std.mem.eql(u8, name_slice, "interrupt-map-mask")) {
+        prop = DeviceTreeNode.Property{ .interrupt_map_mask = value };
+    } else if (std.mem.eql(u8, name_slice, "clock-frequency")) {
+        const val = switch (value.len) {
+            @sizeOf(u64) => std.mem.readInt(u64, value[0..8], .big),
+            else => std.mem.readInt(u32, value[0..4], .big),
+        };
+        prop = DeviceTreeNode.Property{ .clock_frequency = val };
+    } else if (std.mem.eql(u8, name_slice, "timebase-frequency")) {
+        const val = switch (value.len) {
+            @sizeOf(u64) => std.mem.readInt(u64, value[0..8], .big),
+            else => std.mem.readInt(u32, value[0..4], .big),
+        };
+        prop = DeviceTreeNode.Property{ .timebase_frequency = val };
+    } else {
+        prop = DeviceTreeNode.Property{
+            .other = .{
+                .name = name_slice,
+                .value = value,
+            },
+        };
+    }
+
+    return PropertyRead{ .prop = prop, .len = value.len };
 }
 
-const DeviceTreeNodeRead = struct { node: DeviceTreeNode, ptrForward: usize };
-fn readNode(allocator: std.mem.Allocator, blob: [*]u32, ptr: [*]u32) !DeviceTreeNodeRead {
+fn readNode(allocator: std.mem.Allocator, dt: *DeviceTree, node_handle: u32, ptr: [*]u32) !usize {
     var ptr_idx: usize = 0;
     var continue_reading = true;
 
     // NOTE: we do not need to errdefer deallocate the allocated memory
     // since if we can't parse the device tree the kernel should halt thus
     // freeing the memory is redundant
-    var properties = try std.StringArrayHashMapUnmanaged([]const u8).init(allocator, &.{}, &.{});
-    var children = try std.StringArrayHashMapUnmanaged(DeviceTreeNode).init(allocator, &.{}, &.{});
+    //dt.nodes.items[node_handle].properties = try std.StringArrayHashMapUnmanaged([]const u8).init(allocator, &.{}, &.{});
+    //dt.nodes.items[node_handle].children = std.ArrayListUnmanaged(DeviceTreeNode.Child){}
+    //var children = try std.StringArrayHashMapUnmanaged(DeviceTreeNode).init(allocator, &.{}, &.{});
 
     while (continue_reading) {
         const tokenType: TokenType = readToken(ptr[ptr_idx]);
@@ -104,30 +335,34 @@ fn readNode(allocator: std.mem.Allocator, blob: [*]u32, ptr: [*]u32) !DeviceTree
                 const name = readBeginNode(ptr + ptr_idx);
                 ptr_idx += std.math.divCeil(usize, name.len + 1, @sizeOf(u32)) catch unreachable;
 
-                const read = try readNode(allocator, blob, ptr + ptr_idx);
-                ptr_idx += read.ptrForward;
+                const child_handle: u32 = @intCast(dt.nodes.items.len);
+                try dt.nodes.append(allocator, .{
+                    .children = std.ArrayListUnmanaged(DeviceTreeNode.Child){},
+                    .properties = std.ArrayListUnmanaged(DeviceTreeNode.Property){},
+                    .parent_handle = node_handle,
+                });
 
-                try children.put(allocator, name, read.node);
+                const read = try readNode(allocator, dt, child_handle, ptr + ptr_idx);
+                ptr_idx += read;
+
+                try dt.nodes.items[node_handle].children.append(allocator, DeviceTreeNode.Child{
+                    .name = name,
+                    .handle = child_handle,
+                });
             },
             .property => {
-                const prop = readProperty(blob, ptr + ptr_idx);
-                const words = std.math.divCeil(usize, prop.value.len, @sizeOf(u32)) catch unreachable;
+                const prop_read = readProperty(dt.blob, ptr + ptr_idx);
+                const words = std.math.divCeil(usize, prop_read.len, @sizeOf(u32)) catch unreachable;
                 ptr_idx += 2 + words;
 
-                try properties.put(allocator, prop.name, prop.value);
+                try dt.nodes.items[node_handle].properties.append(allocator, prop_read.prop);
             },
             .nop => {},
             .end, .end_node => continue_reading = false,
         }
     }
 
-    return DeviceTreeNodeRead{
-        .node = DeviceTreeNode{
-            .children = children,
-            .properties = properties,
-        },
-        .ptrForward = ptr_idx,
-    };
+    return ptr_idx;
 }
 
 pub fn printDeviceTree(path: []const u8, node: *const DeviceTreeNode, depth: usize) void {
@@ -150,13 +385,14 @@ pub fn printDeviceTree(path: []const u8, node: *const DeviceTreeNode, depth: usi
     }
 }
 
-pub const DeviceTreeRoot = struct { node: DeviceTreeNode, addr: usize, size: usize };
-pub fn readDeviceTreeBlob(allocator: std.mem.Allocator, blobPtr: *void) !DeviceTreeRoot {
+pub fn readDeviceTreeBlob(allocator: std.mem.Allocator, blobPtr: *void) !DeviceTree {
     const blob: [*]u32 = @ptrCast(@alignCast(blobPtr));
     const magic = bigToNative(u32, blob[blob_magic_idx]);
     if (magic != device_tree_blob_magic) {
         return error.MagicMismatch;
     }
+
+    const blob_size = std.math.divCeil(u32, bigToNative(u32, blob[total_size_idx]), @sizeOf(u32)) catch unreachable;
 
     const struct_block_offset = bigToNative(u32, blob[dt_structs_offset_idx]);
     const struct_block_start = @as([*]u8, @ptrCast(blob)) + @as(usize, struct_block_offset);
@@ -171,11 +407,20 @@ pub fn readDeviceTreeBlob(allocator: std.mem.Allocator, blobPtr: *void) !DeviceT
 
     const words = std.math.divCeil(usize, name.len + 1, @sizeOf(u32)) catch unreachable;
     const ptr = token_ptr + 1 + words;
-    const root_node_read = try readNode(allocator, blob, ptr);
-    const root_node = root_node_read.node;
-    return DeviceTreeRoot{
-        .addr = @intFromPtr(blobPtr),
-        .node = root_node,
-        .size = bigToNative(u32, blob[total_size_idx]),
+
+    var dt = DeviceTree{
+        .nodes = std.ArrayListUnmanaged(DeviceTreeNode){},
+        .blob = blob[0 .. blob_size / 4],
     };
+
+    try dt.nodes.append(allocator, .{
+        .children = std.ArrayListUnmanaged(DeviceTreeNode.Child){},
+        .properties = std.ArrayListUnmanaged(DeviceTreeNode.Property){},
+        .parent_handle = no_parent,
+    });
+
+    const root_node_read = try readNode(allocator, &dt, 0, ptr);
+    _ = root_node_read;
+
+    return dt;
 }
