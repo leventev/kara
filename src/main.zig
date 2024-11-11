@@ -6,7 +6,8 @@ const mm = @import("mem/mm.zig");
 const phys = @import("mem/phys.zig");
 const arch = @import("arch/arch.zig");
 const time = @import("time.zig");
-const uart = @import("drivers/uart.zig");
+
+const config = @import("config.zig");
 
 export var device_tree_pointer: *void = undefined;
 
@@ -41,7 +42,13 @@ fn init() void {
     const dt = devicetree.readDeviceTreeBlob(static_mem_allocator, device_tree_pointer) catch
         @panic("Failed to read device tree blob");
 
-    uart.init(&dt) catch @panic("Failed to initialzie UART driver");
+    inline for (config.modules) |mod| {
+        if (!mod.enabled or mod.init_type != .always_run) continue;
+        mod.module.init(&dt) catch |err| {
+            kio.err("failed to initialize {s}: {s}", .{ mod.name, @errorName(err) });
+        };
+        kio.info("Module '{s}'(always run) initialized", .{mod.name});
+    }
 
     const machine = dt.root().getProperty(.model) orelse @panic("Invalid device tree");
     kio.info("Machine model: {s}", .{machine});
@@ -55,6 +62,8 @@ fn init() void {
     static_mem_allocator.free(frame_regions);
 
     arch.initInterrupts();
+
+    devicetree.initDrivesFromDeviceTree(&dt);
 
     time.init(&dt) catch @panic("Failed to initialize timer");
 

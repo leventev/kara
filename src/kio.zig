@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const sbi = @import("arch/riscv64/sbi.zig");
-const uart = @import("drivers/uart.zig");
 const time = @import("time.zig");
 
 pub const KernelWriterType = std.io.GenericWriter(void, error{}, writeBytes);
@@ -24,11 +23,11 @@ fn printTimeAndLogLevel(level: LogLevel) !void {
 }
 
 fn writeBytes(_: void, bytes: []const u8) error{}!usize {
-    if (uart.initialized) {
-        uart.writeBytes(bytes);
-    } else {
-        sbi.debugConsoleWrite(bytes) catch unreachable;
-    }
+    //if (uart.initialized) {
+    //    uart.writeBytes(bytes);
+    //} else {
+    sbi.debugConsoleWrite(bytes) catch unreachable;
+    //}
 
     return bytes.len;
 }

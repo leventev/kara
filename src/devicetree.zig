@@ -3,6 +3,8 @@
 const kio = @import("kio.zig");
 const std = @import("std");
 
+const config = @import("config.zig");
+
 const blob_magic_idx = 0x0;
 const total_size_idx = 0x1;
 const dt_structs_offset_idx = 0x2;
@@ -80,7 +82,7 @@ pub const DeviceTreeNode = struct {
     };
 
     const Property = union(PropertyType) {
-        compatible: []const u8,
+        compatible: Compatible,
         model: []const u8,
         phandle: u32,
         status: []const u8,
@@ -105,6 +107,45 @@ pub const DeviceTreeNode = struct {
             name: []const u8,
             value: []const u8,
         },
+
+        pub const Compatible = struct {
+            buff: []const u8,
+
+            pub fn iterator(self: Compatible) Iterator {
+                return .{
+                    .buff = self.buff,
+                    .idx = 0,
+                };
+            }
+
+            pub const Iterator = struct {
+                buff: []const u8,
+                idx: usize,
+
+                pub fn next(self: *Iterator) ?[]const u8 {
+                    if (self.idx == self.buff.len) return null;
+                    const str = std.mem.sliceTo(self.buff[self.idx..], '\x00');
+                    self.idx += str.len + 1;
+                    return str;
+                }
+            };
+
+            pub fn prettyPrint(self: Compatible, buff: []u8) ![]const u8 {
+                var stream = std.io.fixedBufferStream(buff);
+                var writer = stream.writer();
+                var it = self.iterator();
+                while (it.next()) |comp| {
+                    _ = try writer.write(comp);
+                    _ = try writer.writeByte(' ');
+                }
+
+                if (stream.pos > 0) {
+                    stream.pos -= 1;
+                }
+
+                return stream.getWritten();
+            }
+        };
 
         pub const Reg = struct {
             buff: []const u8,
@@ -173,7 +214,7 @@ pub const DeviceTreeNode = struct {
 
     fn PropReturnType(comptime prop_type: PropertyType) type {
         const typeInfo = @typeInfo(Property);
-        const fields = typeInfo.Union.fields;
+        const fields = typeInfo.@"union".fields;
         for (fields) |field| {
             if (std.mem.eql(u8, field.name, @tagName(prop_type))) {
                 return field.type;
@@ -202,6 +243,13 @@ pub const DeviceTreeNode = struct {
             }
         }
 
+        return null;
+    }
+
+    pub fn getChildNameFromHandle(self: DeviceTreeNode, handle: usize) ?[]const u8 {
+        for (self.children.items) |child| {
+            if (child.handle == handle) return child.name;
+        }
         return null;
     }
 
@@ -255,7 +303,7 @@ fn readProperty(blob: []const u32, ptr: [*]u32) PropertyRead {
     var prop: DeviceTreeNode.Property = undefined;
 
     if (std.mem.eql(u8, name_slice, "compatible")) {
-        prop = DeviceTreeNode.Property{ .compatible = value };
+        prop = DeviceTreeNode.Property{ .compatible = .{ .buff = value } };
     } else if (std.mem.eql(u8, name_slice, "model")) {
         prop = DeviceTreeNode.Property{ .model = value };
     } else if (std.mem.eql(u8, name_slice, "phandle")) {
@@ -323,9 +371,6 @@ fn readNode(allocator: std.mem.Allocator, dt: *DeviceTree, node_handle: u32, ptr
     // NOTE: we do not need to errdefer deallocate the allocated memory
     // since if we can't parse the device tree the kernel should halt thus
     // freeing the memory is redundant
-    //dt.nodes.items[node_handle].properties = try std.StringArrayHashMapUnmanaged([]const u8).init(allocator, &.{}, &.{});
-    //dt.nodes.items[node_handle].children = std.ArrayListUnmanaged(DeviceTreeNode.Child){}
-    //var children = try std.StringArrayHashMapUnmanaged(DeviceTreeNode).init(allocator, &.{}, &.{});
 
     while (continue_reading) {
         const tokenType: TokenType = readToken(ptr[ptr_idx]);
@@ -382,6 +427,45 @@ pub fn printDeviceTree(path: []const u8, node: *const DeviceTreeNode, depth: usi
     var child_it = node.children.iterator();
     while (child_it.next()) |child| {
         printDeviceTree(child.key_ptr.*, child.value_ptr, depth + 1);
+    }
+}
+
+pub fn initDriversFromDeviceTree(dt: *const DeviceTree) void {
+    for (dt.nodes.items, 0..) |node, handle| {
+        const compatible = node.getProperty(.compatible) orelse continue;
+
+        const node_name = blk: {
+            if (node.parent_handle == no_parent) break :blk "/";
+            const parent = dt.nodes.items[node.parent_handle];
+            break :blk parent.getChildNameFromHandle(handle) orelse unreachable;
+        };
+
+        var found = false;
+        var it = compatible.iterator();
+        while (it.next()) |node_comp| compatible_blk: {
+            inline for (config.modules) |mod| {
+                if (!mod.enabled or mod.init_type != .driver) continue;
+                for (mod.init_type.driver.compatible) |driver_comp| {
+                    if (!std.mem.eql(u8, driver_comp, node_comp)) continue;
+
+                    mod.module.init(dt) catch |err| {
+                        kio.err("failed to initialize {s}: {s}", .{ mod.name, @errorName(err) });
+                    };
+                    kio.info("Module '{s}'({s}) initialized", .{ mod.name, node_name });
+
+                    found = true;
+                    break :compatible_blk;
+                }
+            }
+        }
+
+        if (found) continue;
+        var compBuff: [256]u8 = undefined;
+        const allCompString = compatible.prettyPrint(&compBuff) catch @panic("compatible string too long");
+        kio.warn(
+            "Compatible driver not found for '{s}' compatible: '{s}'",
+            .{ node_name, allCompString },
+        );
     }
 }
 

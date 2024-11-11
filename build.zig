@@ -1,4 +1,5 @@
 const std = @import("std");
+const cfg = @import("src/config.zig");
 
 pub fn build(b: *std.Build) void {
     // we are targeting riscv64
