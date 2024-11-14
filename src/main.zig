@@ -63,7 +63,7 @@ fn init() void {
 
     arch.initInterrupts();
 
-    devicetree.initDrivesFromDeviceTree(&dt);
+    devicetree.initDriversFromDeviceTree(&dt);
 
     time.init(&dt) catch @panic("Failed to initialize timer");
 

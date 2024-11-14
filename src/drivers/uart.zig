@@ -3,6 +3,7 @@
 const std = @import("std");
 const devicetree = @import("../devicetree.zig");
 const mm = @import("../mem/mm.zig");
+const kio = @import("../kio.zig");
 
 const receiver_buffer_offset = 0;
 const transmission_holding_register_offset = 0;
@@ -112,36 +113,35 @@ inline fn writeByte(val: u8) void {
     writeReg(transmission_holding_register_offset, val);
 }
 
-pub fn writeBytes(buf: []const u8) void {
+fn writeBytes(buf: []const u8) ?usize {
     var status: LineStatusRegister = @bitCast(readReg(line_status_offset));
+
     for (buf) |c| {
         while (!status.transmit_fifo_empty) {
             status = @bitCast(readReg(line_status_offset));
         }
         writeByte(c);
     }
+
+    return buf.len;
 }
 
-pub var initialized = false;
+pub fn initDriver(dt: *const devicetree.DeviceTree, handle: usize) !void {
+    const uart = dt.nodes.items[handle];
 
-pub fn init(dt: *const devicetree.DeviceTree) !void {
-    const soc = dt.getChild(dt.root(), "soc") orelse
-        return error.InvalidDeviceTree;
-
-    const serial = dt.getChild(soc, "serial@10000000") orelse
-        return error.InvalidDeviceTree;
-
-    const freq = serial.getProperty(.clock_frequency) orelse
+    const freq = uart.getProperty(.clock_frequency) orelse
         return error.InvalidDeviceTree;
     _ = freq;
 
-    const regs = serial.getProperty(.reg) orelse
+    const regs = uart.getProperty(.reg) orelse
         return error.InvalidDeviceTree;
 
-    // TODO: get address cells from parent
-    var regs_it = try regs.iterator(2, 0);
+    const addressCells = uart.getAddressCellFromParent(dt) orelse
+        return error.InvalidDeviceTree;
 
-    // TODO: parse all provided addresses? and based on the provided cell sizes
+    var regs_it = try regs.iterator(addressCells, 0);
+
+    // TODO: parse all provided addresses?
     const baseAddr = (regs_it.next() orelse return error.InvalidDeviceTree).addr;
     const physAddr = mm.PhysicalAddress.make(baseAddr);
     const virtAddr = mm.physicalToHHDMAddress(physAddr);
@@ -179,5 +179,9 @@ pub fn init(dt: *const devicetree.DeviceTree) !void {
         .stick_parity = false,
     }));
 
-    initialized = true;
+    kio.addBackend(.{
+        .name = "uart",
+        .priority = 1000,
+        .writeBytes = writeBytes,
+    }) catch kio.warn("Failed to add uart IO backend", .{});
 }

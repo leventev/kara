@@ -3,10 +3,31 @@ const std = @import("std");
 const sbi = @import("arch/riscv64/sbi.zig");
 const time = @import("time.zig");
 
+pub const IOBackend = struct {
+    name: []const u8,
+    writeBytes: *const fn (bytes: []const u8) ?usize,
+    priority: usize,
+};
+
+const max_backends = 8;
+
+var backends: [max_backends]IOBackend = undefined;
+var backend_count: usize = 0;
+
 pub const KernelWriterType = std.io.GenericWriter(void, error{}, writeBytes);
 pub const kernel_writer = KernelWriterType{ .context = {} };
 
 const kio_cfg: std.io.tty.Config = .escape_codes;
+
+pub fn addBackend(backend: IOBackend) !void {
+    // TODO: locking
+    if (backend_count == max_backends) return error.TooManyBackends;
+    backends[backend_count] = backend;
+    backend_count += 1;
+    info("New kernel IO backend added: {s} with priority: {}", .{ backend.name, backend.priority });
+}
+
+// TODO: removeBackend
 
 fn printTimeAndLogLevel(level: LogLevel) !void {
     const ns = time.nanoseconds() orelse 0;
@@ -23,13 +44,17 @@ fn printTimeAndLogLevel(level: LogLevel) !void {
 }
 
 fn writeBytes(_: void, bytes: []const u8) error{}!usize {
-    //if (uart.initialized) {
-    //    uart.writeBytes(bytes);
-    //} else {
-    sbi.debugConsoleWrite(bytes) catch unreachable;
-    //}
+    // TODO: locking
+    if (backend_count == 0) return 0;
 
-    return bytes.len;
+    // TODO: order the list so we don't have to loop each time
+    var best = &backends[0];
+    for (backends[1..backend_count]) |*backend| {
+        if (backend.priority > best.priority)
+            best = backend;
+    }
+
+    return best.writeBytes(bytes) orelse unreachable;
 }
 
 pub const LogLevel = enum(comptime_int) {

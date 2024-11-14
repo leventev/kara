@@ -13,7 +13,18 @@ pub const initInterrupts = trap.init;
 
 pub const clock_source = timer.riscv_clock_source;
 
+fn sbiWriteBytes(bytes: []const u8) ?usize {
+    sbi.debugConsoleWrite(bytes) catch return null;
+    return bytes.len;
+}
+
 pub fn init() linksection(".init") void {
+    kio.addBackend(.{
+        .name = "riscv64-sbi",
+        .priority = 100,
+        .writeBytes = sbiWriteBytes,
+    }) catch unreachable;
+
     kio.info("Starting kara(riscv64)...", .{});
     const sbi_version = sbi.getSpecificationVersion();
     const sbi_version_major = sbi_version >> 24;

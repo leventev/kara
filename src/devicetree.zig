@@ -448,7 +448,7 @@ pub fn initDriversFromDeviceTree(dt: *const DeviceTree) void {
                 for (mod.init_type.driver.compatible) |driver_comp| {
                     if (!std.mem.eql(u8, driver_comp, node_comp)) continue;
 
-                    mod.module.init(dt) catch |err| {
+                    mod.module.initDriver(dt, handle) catch |err| {
                         kio.err("failed to initialize {s}: {s}", .{ mod.name, @errorName(err) });
                     };
                     kio.info("Module '{s}'({s}) initialized", .{ mod.name, node_name });
